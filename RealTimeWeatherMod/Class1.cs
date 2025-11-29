@@ -412,6 +412,23 @@ namespace ChillWithYou.EnvSync
         private EnvironmentType? _lastAppliedEnv;
         private bool _isFetching;
 
+        // 互斥组1 - 基础环境（必须有且只有一个）
+        private static readonly EnvironmentType[] BaseEnvironments = new[]
+        {
+            EnvironmentType.Day,
+            EnvironmentType.Sunset,
+            EnvironmentType.Night,
+            EnvironmentType.Cloudy
+        };
+
+        // 互斥组2 - 降水天气（最多一个，可以没有）
+        private static readonly EnvironmentType[] PrecipitationWeathers = new[]
+        {
+            EnvironmentType.LightRain,
+            EnvironmentType.HeavyRain,
+            EnvironmentType.ThunderRain
+        };
+
         private static readonly EnvironmentType[] MainEnvironments = new[]
         {
             EnvironmentType.Day,
@@ -584,7 +601,114 @@ namespace ChillWithYou.EnvSync
             return null;
         }
 
-        private void ApplyEnvironment(WeatherInfo weather)
+        private bool IsEnvironmentActive(EnvironmentType envType)
+        {
+            try
+            {
+                var windowViewDic = SaveDataManager.Instance.WindowViewDic;
+                WindowViewType windowType;
+                if (Enum.TryParse(envType.ToString(), out windowType))
+                {
+                    return windowViewDic.ContainsKey(windowType) && windowViewDic[windowType].IsActive;
+                }
+            }
+            catch (Exception ex)
+            {
+                ChillEnvPlugin.Log?.LogWarning($"检查环境状态失败: {ex.Message}");
+            }
+            return false;
+        }
+
+        private void ActivateEnvironment(EnvironmentType envType)
+        {
+            if (EnvRegistry.TryGet(envType, out var ctrl))
+            {
+                try
+                {
+                    ctrl.ChangeWindowView(ChangeType.Activate);
+                }
+                catch (Exception ex)
+                {
+                    ChillEnvPlugin.Log?.LogError($"激活 [{envType}] 失败: {ex}");
+                }
+            }
+        }
+
+        private void DeactivateEnvironment(EnvironmentType envType)
+        {
+            if (EnvRegistry.TryGet(envType, out var ctrl))
+            {
+                try
+                {
+                    ctrl.ChangeWindowView(ChangeType.Deactivate);
+                }
+                catch (Exception ex)
+                {
+                    ChillEnvPlugin.Log?.LogWarning($"关闭 [{envType}] 失败: {ex}");
+                }
+            }
+        }
+
+        private void ActivateEnvironmentWithMutex(EnvironmentType target)
+        {
+            // 判断目标属于哪个互斥组
+            bool isBaseEnv = System.Array.IndexOf(BaseEnvironments, target) >= 0;
+            bool isPrecipitation = System.Array.IndexOf(PrecipitationWeathers, target) >= 0;
+            
+            if (isBaseEnv)
+            {
+                // 关闭其他基础环境
+                foreach (var env in BaseEnvironments)
+                {
+                    if (env != target && IsEnvironmentActive(env))
+                    {
+                        DeactivateEnvironment(env);
+                        ChillEnvPlugin.Log?.LogInfo($"[互斥] 关闭基础环境: {env}");
+                    }
+                }
+            }
+            
+            if (isPrecipitation)
+            {
+                // 关闭其他降水天气
+                foreach (var env in PrecipitationWeathers)
+                {
+                    if (env != target && IsEnvironmentActive(env))
+                    {
+                        DeactivateEnvironment(env);
+                        ChillEnvPlugin.Log?.LogInfo($"[互斥] 关闭降水天气: {env}");
+                    }
+                }
+            }
+            
+            // 激活目标
+            if (!IsEnvironmentActive(target))
+            {
+                ActivateEnvironment(target);
+                ChillEnvPlugin.Log?.LogInfo($"[激活] {target}");
+            }
+        }
+
+        private void ClearAllWeatherEffects()
+        {
+            // 晴天 = 只保留基础环境中的时间类，关闭 Cloudy 和所有降水
+            if (IsEnvironmentActive(EnvironmentType.Cloudy))
+            {
+                DeactivateEnvironment(EnvironmentType.Cloudy);
+                ChillEnvPlugin.Log?.LogInfo("[晴天] 关闭多云");
+            }
+            
+            foreach (var env in PrecipitationWeathers)
+            {
+                if (IsEnvironmentActive(env))
+                {
+                    DeactivateEnvironment(env);
+                    ChillEnvPlugin.Log?.LogInfo($"[晴天] 关闭降水: {env}");
+                }
+            }
+        }
+
+        private EnvironmentType GetTimeBasedEnvironment()
         {
             DateTime now = DateTime.Now;
             TimeSpan currentTime = now.TimeOfDay;
@@ -598,101 +722,95 @@ namespace ChillWithYou.EnvSync
             TimeSpan sunsetStart = sunset.Subtract(TimeSpan.FromHours(1));
             TimeSpan sunsetEnd = sunset.Add(TimeSpan.FromMinutes(30));
 
-            EnvironmentType targetEnv;
-
-            // 优先使用文本映射
-            EnvironmentType mapped;
-            if (WeatherService.TryGetEnvironment(weather.Text, out mapped))
+            if (currentTime >= sunrise && currentTime < sunsetStart)
             {
-                if (mapped == EnvironmentType.Day)
-                {
-                    // Clear: 根据时间决定实际环境
-                    if (currentTime >= sunrise && currentTime < sunsetStart)
-                    {
-                        targetEnv = EnvironmentType.Day;
-                    }
-                    else if (currentTime >= sunsetStart && currentTime < sunsetEnd)
-                    {
-                        targetEnv = EnvironmentType.Sunset;
-                    }
-                    else
-                    {
-                        targetEnv = EnvironmentType.Night;
-                    }
-                }
-                else
-                {
-                    targetEnv = mapped;
-                }
+                return EnvironmentType.Day;
+            }
+            else if (currentTime >= sunsetStart && currentTime < sunsetEnd)
+            {
+                return EnvironmentType.Sunset;
             }
             else
             {
-                // 映射不到时，按旧的条件做保底
-                switch (weather.Condition)
-                {
-                    case WeatherCondition.Snowy:
-                        targetEnv = EnvironmentType.Snow;
-                        break;
-                    case WeatherCondition.Cloudy:
-                    case WeatherCondition.Foggy:
-                        targetEnv = EnvironmentType.Cloudy;
-                        break;
-                    case WeatherCondition.Rainy:
-                        targetEnv = EnvironmentType.HeavyRain;
-                        break;
-                    case WeatherCondition.Clear:
-                    default:
-                        if (currentTime >= sunrise && currentTime < sunsetStart)
-                        {
-                            targetEnv = EnvironmentType.Day;
-                        }
-                        else if (currentTime >= sunsetStart && currentTime < sunsetEnd)
-                        {
-                            targetEnv = EnvironmentType.Sunset;
-                        }
-                        else
-                        {
-                            targetEnv = EnvironmentType.Night;
-                        }
-                        break;
-                }
+                return EnvironmentType.Night;
             }
+        }
 
-            ChillEnvPlugin.Log?.LogInfo($"[天气决策] {weather.Text} + {now:HH:mm} -> {targetEnv}");
-            SwitchToEnvironment(targetEnv);
+        private void ApplyEnvironment(WeatherInfo weather)
+        {
+            DateTime now = DateTime.Now;
+            ChillEnvPlugin.Log?.LogInfo($"[天气决策] {weather.Text}(Code:{weather.Code}) + {now:HH:mm}");
+            
+            // 1. 先确定基础时间环境
+            EnvironmentType timeEnv = GetTimeBasedEnvironment();
+            
+            // 2. 根据天气代码决定天气效果
+            int code = weather.Code;
+            
+            if (code >= 0 && code <= 3) 
+            {
+                // 晴/少云 - 只设置时间，清除天气效果
+                ChillEnvPlugin.Log?.LogInfo("[天气决策] 晴天，清除所有天气效果");
+                ClearAllWeatherEffects();
+                ActivateEnvironmentWithMutex(timeEnv);
+            }
+            else if (code >= 4 && code <= 9)
+            {
+                // 多云/阴天 - Cloudy 会替代时间环境
+                ChillEnvPlugin.Log?.LogInfo("[天气决策] 阴天/多云");
+                ClearAllWeatherEffects(); // 先清降水
+                ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
+            }
+            else if (code >= 10 && code <= 12)
+            {
+                // 小雨/阵雨
+                ChillEnvPlugin.Log?.LogInfo("[天气决策] 小雨/阵雨");
+                ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
+                ActivateEnvironmentWithMutex(EnvironmentType.LightRain);
+            }
+            else if (code >= 13 && code <= 14)
+            {
+                // 大雨/暴雨
+                ChillEnvPlugin.Log?.LogInfo("[天气决策] 大雨/暴雨");
+                ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
+                ActivateEnvironmentWithMutex(EnvironmentType.HeavyRain);
+            }
+            else if (code >= 15 && code <= 18)
+            {
+                // 雷阵雨
+                ChillEnvPlugin.Log?.LogInfo("[天气决策] 雷阵雨");
+                ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
+                ActivateEnvironmentWithMutex(EnvironmentType.ThunderRain);
+            }
+            else if (code >= 21 && code <= 25)
+            {
+                // 雪天 - 保留雪天场景，不使用降水互斥组
+                ChillEnvPlugin.Log?.LogInfo("[天气决策] 雪天（暂不支持，回退到时间环境）");
+                ClearAllWeatherEffects();
+                ActivateEnvironmentWithMutex(timeEnv);
+            }
+            else
+            {
+                // 其他未知天气，保守处理
+                ChillEnvPlugin.Log?.LogInfo($"[天气决策] 未知天气代码 {code}，使用默认时间环境");
+                ClearAllWeatherEffects();
+                ActivateEnvironmentWithMutex(timeEnv);
+            }
+            
+            ChillEnvPlugin.Log?.LogInfo("✅ 天气切换完成");
         }
 
         private void ApplyTimeBasedEnvironment()
         {
             DateTime now = DateTime.Now;
-            TimeSpan currentTime = now.TimeOfDay;
+            ChillEnvPlugin.Log?.LogInfo($"[时间决策] {now:HH:mm}");
 
-            TimeSpan sunrise, sunset;
-            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunriseTime.Value, out sunrise))
-                sunrise = new TimeSpan(6, 30, 0);
-            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunsetTime.Value, out sunset))
-                sunset = new TimeSpan(18, 30, 0);
-
-            TimeSpan sunsetStart = sunset.Subtract(TimeSpan.FromHours(1));
-            TimeSpan sunsetEnd = sunset.Add(TimeSpan.FromMinutes(30));
-
-            EnvironmentType targetEnv;
-
-            if (currentTime >= sunrise && currentTime < sunsetStart)
-            {
-                targetEnv = EnvironmentType.Day;
-            }
-            else if (currentTime >= sunsetStart && currentTime < sunsetEnd)
-            {
-                targetEnv = EnvironmentType.Sunset;
-            }
-            else
-            {
-                targetEnv = EnvironmentType.Night;
-            }
-
-            ChillEnvPlugin.Log?.LogInfo($"[时间决策] {now:HH:mm} -> {targetEnv}");
-            SwitchToEnvironment(targetEnv);
+            EnvironmentType targetEnv = GetTimeBasedEnvironment();
+            
+            ChillEnvPlugin.Log?.LogInfo($"[时间决策] -> {targetEnv}");
+            ClearAllWeatherEffects();
+            ActivateEnvironmentWithMutex(targetEnv);
+            ChillEnvPlugin.Log?.LogInfo("✅ 时间切换完成");
         }
 
         private void SwitchToEnvironment(EnvironmentType targetEnv)
