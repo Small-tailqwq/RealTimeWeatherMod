@@ -22,6 +22,7 @@ namespace ChillEnvSync
 
         // ========== 状态 ==========
         private float _lastSyncTime = -9999f;
+        private float _lastInitTryTime = 0f;
         private WindowViewService _windowViewService;
         private bool _isInitialized = false;
         private ManualLogSource _log;
@@ -52,17 +53,22 @@ namespace ChillEnvSync
             _apiKey = Config.Bind("General", "ApiKey", "S-xxxxxxxx", "心知天气API密钥");
             _syncIntervalMinutes = Config.Bind("General", "SyncIntervalMinutes", 30, "同步间隔(分钟)");
 
-            _log.LogInfo("Chill Env Sync 已加载");
+            _log.LogInfo("=== Chill Env Sync 插件已加载 ===");
+            _log.LogInfo($"配置: 城市={_cityName.Value}, 间隔={_syncIntervalMinutes.Value}分钟, 启用={_enableWeatherSync.Value}");
         }
 
         private void Update()
         {
             if (!_enableWeatherSync.Value) return;
 
-            // 尝试初始化
+            // 尝试初始化（每2秒尝试一次，避免刷屏）
             if (!_isInitialized)
             {
-                TryInitialize();
+                if (Time.time - _lastInitTryTime >= 2f)
+                {
+                    _lastInitTryTime = Time.time;
+                    TryInitialize();
+                }
                 return;
             }
 
@@ -71,6 +77,7 @@ namespace ChillEnvSync
             if (Time.time - _lastSyncTime >= interval)
             {
                 _lastSyncTime = Time.time;
+                _log.LogInfo($"[定时触发] 开始天气同步，间隔={interval}秒");
                 StartCoroutine(FetchAndApplyWeather());
             }
         }
@@ -79,21 +86,53 @@ namespace ChillEnvSync
         {
             try
             {
+                _log.LogInfo("[初始化] 正在查找 WindowViewService...");
+
+                // 方法1：直接查找
                 _windowViewService = FindObjectOfType<WindowViewService>();
+
                 if (_windowViewService != null)
                 {
                     _isInitialized = true;
-                    _log.LogInfo("WindowViewService 已找到，初始化完成");
+                    _log.LogInfo($"[初始化] ✓ WindowViewService 已找到: {_windowViewService.name}");
+                    _log.LogInfo($"[初始化] GameObject路径: {GetGameObjectPath(_windowViewService.gameObject)}");
 
                     // 立即执行一次同步
                     _lastSyncTime = Time.time;
                     StartCoroutine(FetchAndApplyWeather());
                 }
+                else
+                {
+                    _log.LogWarning("[初始化] ✗ WindowViewService 未找到，2秒后重试...");
+
+                    // 打印场景中的所有根对象，帮助调试
+                    var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+                    _log.LogInfo($"[初始化] 当前场景: {scene.name}");
+
+                    var rootObjects = scene.GetRootGameObjects();
+                    _log.LogInfo($"[初始化] 场景根对象数量: {rootObjects.Length}");
+                    foreach (var root in rootObjects)
+                    {
+                        _log.LogInfo($"  - {root.name}");
+                    }
+                }
             }
             catch (Exception ex)
             {
-                _log.LogWarning($"初始化失败: {ex.Message}");
+                _log.LogError($"[初始化] 异常: {ex.Message}\n{ex.StackTrace}");
             }
+        }
+
+        private string GetGameObjectPath(GameObject obj)
+        {
+            string path = obj.name;
+            Transform parent = obj.transform.parent;
+            while (parent != null)
+            {
+                path = parent.name + "/" + path;
+                parent = parent.parent;
+            }
+            return path;
         }
 
         // ========== 天气获取 ==========
@@ -102,37 +141,49 @@ namespace ChillEnvSync
             string city = _cityName.Value;
             string apiKey = _apiKey.Value;
 
-            _log.LogInfo($"请求天气: {city}");
+            _log.LogInfo($"[天气请求] 城市: {city}, API密钥: {apiKey.Substring(0, Math.Min(8, apiKey.Length))}...");
+
+            // 检查API密钥是否是默认值
+            if (apiKey == "S-xxxxxxxx" || string.IsNullOrEmpty(apiKey))
+            {
+                _log.LogError("[天气请求] API密钥未配置！请在 BepInEx/config/com.yourname.chillroomsync.cfg 中设置");
+                yield break;
+            }
 
             string url = $"https://api.seniverse.com/v3/weather/now.json?key={apiKey}&location={UnityWebRequest.EscapeURL(city)}&language=zh-Hans&unit=c";
+            _log.LogInfo($"[天气请求] URL: {url}");
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
+                _log.LogInfo("[天气请求] 发送请求...");
                 yield return request.SendWebRequest();
+
+                _log.LogInfo($"[天气请求] 响应状态: {request.result}");
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    _log.LogError($"天气请求失败: {request.error}");
+                    _log.LogError($"[天气请求] 失败: {request.error}");
+                    _log.LogError($"[天气请求] HTTP状态码: {request.responseCode}");
                     yield break;
                 }
 
                 string json = request.downloadHandler.text;
-                _log.LogInfo($"天气API返回: {json}");
+                _log.LogInfo($"[天气请求] 返回JSON: {json}");
 
                 var weatherData = ParseWeatherJson(json);
                 if (weatherData.HasValue)
                 {
                     var data = weatherData.Value;
-                    _log.LogInfo($"天气解析成功: {data.Text}, {data.Temperature}°C, Code={data.Code}");
+                    _log.LogInfo($"[天气解析] 成功: {data.Text}, {data.Temperature}°C, Code={data.Code}");
 
                     bool isDay = IsDaytime();
-                    _log.LogInfo($"[天气决策] {data.Text} + 当前时间 -> {(isDay ? "Day" : "Night")}");
+                    _log.LogInfo($"[天气决策] 当前时间: {DateTime.Now:HH:mm}, 是否白天: {isDay}");
 
                     ApplyWeather(data.Code, isDay);
                 }
                 else
                 {
-                    _log.LogError("天气解析失败");
+                    _log.LogError("[天气解析] 失败，无法解析JSON");
                 }
             }
         }
@@ -152,6 +203,8 @@ namespace ChillEnvSync
                 var codeMatch = Regex.Match(json, "\"code\"\\s*:\\s*\"([^\"]+)\"");
                 var tempMatch = Regex.Match(json, "\"temperature\"\\s*:\\s*\"([^\"]+)\"");
 
+                _log.LogInfo($"[JSON解析] text匹配: {textMatch.Success}, code匹配: {codeMatch.Success}, temp匹配: {tempMatch.Success}");
+
                 if (textMatch.Success && codeMatch.Success && tempMatch.Success)
                 {
                     return new WeatherData
@@ -164,7 +217,7 @@ namespace ChillEnvSync
             }
             catch (Exception ex)
             {
-                _log.LogError($"JSON解析异常: {ex.Message}");
+                _log.LogError($"[JSON解析] 异常: {ex.Message}");
             }
             return null;
         }
@@ -190,7 +243,6 @@ namespace ChillEnvSync
 
             switch (weatherCode)
             {
-                // 晴天
                 case "0":
                 case "1":
                 case "2":
@@ -203,7 +255,6 @@ namespace ChillEnvSync
                         ClearAllPrecipitation = true
                     };
 
-                // 多云/阴
                 case "4":
                 case "5":
                 case "6":
@@ -218,7 +269,6 @@ namespace ChillEnvSync
                         ClearAllPrecipitation = true
                     };
 
-                // 小雨/阵雨
                 case "10":
                 case "13":
                 case "14":
@@ -231,7 +281,6 @@ namespace ChillEnvSync
                         ClearAllPrecipitation = false
                     };
 
-                // 大雨/暴雨
                 case "15":
                 case "16":
                 case "17":
@@ -244,7 +293,6 @@ namespace ChillEnvSync
                         ClearAllPrecipitation = false
                     };
 
-                // 雷雨
                 case "11":
                 case "12":
                     return new WeatherMapping
@@ -255,7 +303,6 @@ namespace ChillEnvSync
                         ClearAllPrecipitation = false
                     };
 
-                // 雪
                 case "20":
                 case "21":
                 case "22":
@@ -270,7 +317,6 @@ namespace ChillEnvSync
                         ClearAllPrecipitation = true
                     };
 
-                // 雾/霾/沙尘
                 case "30":
                 case "31":
                 case "32":
@@ -286,7 +332,7 @@ namespace ChillEnvSync
                     };
 
                 default:
-                    _log.LogWarning($"未知天气代码: {weatherCode}, 使用默认映射");
+                    _log.LogWarning($"[天气映射] 未知代码: {weatherCode}, 使用默认");
                     return new WeatherMapping
                     {
                         BaseEnvironment = baseEnv,
@@ -302,7 +348,7 @@ namespace ChillEnvSync
         {
             if (_windowViewService == null)
             {
-                _log.LogError("WindowViewService 未初始化");
+                _log.LogError("[应用天气] WindowViewService 为 null");
                 return;
             }
 
@@ -314,6 +360,14 @@ namespace ChillEnvSync
 
             try
             {
+                // 先打印当前状态
+                _log.LogInfo("[应用天气] 当前环境状态:");
+                foreach (var env in BaseTimeWeather)
+                {
+                    bool active = _windowViewService.IsActiveWindow(env);
+                    _log.LogInfo($"  - {env}: {(active ? "激活" : "关闭")}");
+                }
+
                 ApplyBaseEnvironment(mapping.BaseEnvironment);
                 ApplyPrecipitation(mapping.PrecipitationType, mapping.ClearAllPrecipitation);
 
@@ -324,11 +378,11 @@ namespace ChillEnvSync
 
                 SaveEnvironmentState(mapping);
 
-                _log.LogInfo("[应用天气] 完成");
+                _log.LogInfo("[应用天气] ✓ 完成");
             }
             catch (Exception ex)
             {
-                _log.LogError($"应用天气失败: {ex.Message}\n{ex.StackTrace}");
+                _log.LogError($"[应用天气] 异常: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
@@ -401,8 +455,22 @@ namespace ChillEnvSync
         {
             try
             {
+                _log.LogInfo("[存档] 尝试保存环境状态...");
+
                 var saveData = SaveDataManager.Instance;
-                if (saveData?.WindowViewDic == null) return;
+                if (saveData == null)
+                {
+                    _log.LogWarning("[存档] SaveDataManager.Instance 为 null");
+                    return;
+                }
+
+                if (saveData.WindowViewDic == null)
+                {
+                    _log.LogWarning("[存档] WindowViewDic 为 null");
+                    return;
+                }
+
+                _log.LogInfo($"[存档] WindowViewDic 数量: {saveData.WindowViewDic.Count}");
 
                 foreach (var env in BaseTimeWeather)
                 {
@@ -429,11 +497,11 @@ namespace ChillEnvSync
                 }
 
                 saveData.SaveEnviroment();
-                _log.LogInfo("[存档] 环境状态已保存");
+                _log.LogInfo("[存档] ✓ 保存成功");
             }
             catch (Exception ex)
             {
-                _log.LogWarning($"保存存档失败: {ex.Message}");
+                _log.LogWarning($"[存档] 异常: {ex.Message}");
             }
         }
     }
