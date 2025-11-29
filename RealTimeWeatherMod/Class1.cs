@@ -12,12 +12,16 @@ using Bulbul;
 
 namespace ChillWithYou.EnvSync
 {
-    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "3.1.0")]
+    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "3.5.0")]
     public class ChillEnvPlugin : BaseUnityPlugin
     {
         internal static ChillEnvPlugin Instance;
         internal static ManualLogSource Log;
         internal static UnlockItemService UnlockItemServiceInstance;
+
+        internal static object WindowViewServiceInstance;
+        internal static MethodInfo ChangeWeatherMethod;
+
         internal static bool Initialized;
 
         // 配置项
@@ -36,7 +40,7 @@ namespace ChillWithYou.EnvSync
             Instance = this;
             Log = Logger;
 
-            Log.LogInfo("【3.1.0】启动 - 支持心知天气同步 (修复版)");
+            Log.LogInfo("【3.5.0】启动 - 双按钮逻辑适配 (模拟点击MainIcon)");
 
             try
             {
@@ -85,6 +89,56 @@ namespace ChillWithYou.EnvSync
 
             Initialized = true;
             Log?.LogInfo("初始化完成，环境和装饰品已解锁");
+        }
+
+        internal static void CallServiceChangeWeather(EnvironmentType envType)
+        {
+            if (WindowViewServiceInstance == null || ChangeWeatherMethod == null) return;
+
+            try
+            {
+                var parameters = ChangeWeatherMethod.GetParameters();
+                if (parameters.Length == 0) return;
+
+                Type windowViewEnumType = parameters[0].ParameterType;
+                object enumValue = null;
+
+                try
+                {
+                    enumValue = Enum.Parse(windowViewEnumType, envType.ToString());
+                }
+                catch { return; }
+
+                ChangeWeatherMethod.Invoke(WindowViewServiceInstance, new object[] { enumValue });
+            }
+            catch (Exception ex)
+            {
+                Log?.LogError($"调用 Service 失败: {ex.Message}");
+            }
+        }
+
+        // 【新增】模拟点击 MainIcon (按钮A)
+        internal static void SimulateClickMainIcon(EnviromentController ctrl)
+        {
+            if (ctrl == null) return;
+            try
+            {
+                // 反射调用 OnClickButtonMainIcon
+                MethodInfo clickMethod = ctrl.GetType().GetMethod("OnClickButtonMainIcon", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (clickMethod != null)
+                {
+                    clickMethod.Invoke(ctrl, null);
+                    // Log?.LogInfo($"[模拟点击] {ctrl.EnvironmentType} MainIcon");
+                }
+                else
+                {
+                    Log?.LogWarning($"[警告] 未找到 OnClickButtonMainIcon 方法: {ctrl.EnvironmentType}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log?.LogError($"模拟点击失败: {ex.Message}");
+            }
         }
 
         private static void ForceUnlockAllEnvironments(UnlockItemService svc)
@@ -146,8 +200,6 @@ namespace ChillWithYou.EnvSync
 
                     propValue.SetValue(reactive, false, null);
                     count++;
-
-                    Log?.LogInfo($"🔓 已解锁装饰品: {entry.Key}");
                 }
                 Log?.LogInfo($"✅ 已解锁 {count} 个装饰品");
             }
@@ -158,15 +210,9 @@ namespace ChillWithYou.EnvSync
         }
     }
 
-    // 天气数据
     public enum WeatherCondition
     {
-        Clear,      // 晴天
-        Cloudy,     // 多云/阴天
-        Rainy,      // 雨天
-        Snowy,      // 雪天
-        Foggy,      // 雾/霾
-        Unknown
+        Clear, Cloudy, Rainy, Snowy, Foggy, Unknown
     }
 
     public class WeatherInfo
@@ -176,33 +222,25 @@ namespace ChillWithYou.EnvSync
         public string Text;
         public int Code;
         public DateTime UpdateTime;
-
-        public override string ToString()
-        {
-            return $"{Text}({Condition}), {Temperature}°C, Code={Code}";
-        }
+        public override string ToString() => $"{Text}({Condition}), {Temperature}°C, Code={Code}";
     }
 
-    // 心知天气 JSON 解析
     [Serializable]
     public class WeatherApiResponse
     {
         public WeatherResult[] results;
     }
-
     [Serializable]
     public class WeatherResult
     {
         public WeatherLocation location;
         public WeatherNow now;
     }
-
     [Serializable]
     public class WeatherLocation
     {
         public string name;
     }
-
     [Serializable]
     public class WeatherNow
     {
@@ -217,22 +255,14 @@ namespace ChillWithYou.EnvSync
         private static DateTime _lastFetchTime;
         private static readonly TimeSpan CacheExpiry = TimeSpan.FromMinutes(5);
 
-        // 依据天气文本到环境的映射（大小写不敏感）
         private static readonly Dictionary<string, EnvironmentType> WeatherToEnvironment = new Dictionary<string, EnvironmentType>(StringComparer.OrdinalIgnoreCase)
         {
-            // 晴天/少云 -> 根据时间自动选择（白天/日落/夜晚）
             {"Clear", EnvironmentType.Day},
             {"Clouds", EnvironmentType.Cloudy},
-
-            // 雨天
-            {"Drizzle", EnvironmentType.LightRain},      // 毛毛雨
-            {"Rain", EnvironmentType.HeavyRain},          // 普通雨
-            {"Thunderstorm", EnvironmentType.ThunderRain}, // 雷雨
-
-            // 雪
+            {"Drizzle", EnvironmentType.LightRain},
+            {"Rain", EnvironmentType.HeavyRain},
+            {"Thunderstorm", EnvironmentType.ThunderRain},
             {"Snow", EnvironmentType.Snow},
-
-            // 其他天气 -> 映射到最接近的
             {"Mist", EnvironmentType.Cloudy},
             {"Fog", EnvironmentType.Cloudy},
             {"Haze", EnvironmentType.Cloudy},
@@ -253,7 +283,6 @@ namespace ChillWithYou.EnvSync
 
         public static IEnumerator FetchWeather(string apiKey, string location, Action<WeatherInfo> onComplete)
         {
-            // 检查缓存
             if (_cachedWeather != null && DateTime.Now - _lastFetchTime < CacheExpiry)
             {
                 ChillEnvPlugin.Log?.LogInfo($"使用缓存天气: {_cachedWeather}");
@@ -278,18 +307,13 @@ namespace ChillWithYou.EnvSync
                 }
 
                 string json = request.downloadHandler.text;
-                ChillEnvPlugin.Log?.LogInfo($"天气API返回: {json}");
-
                 try
                 {
-                    // 手动解析 JSON（因为 JsonUtility 对嵌套数组支持不好）
                     var weather = ParseWeatherJson(json);
-
                     if (weather != null)
                     {
                         _cachedWeather = weather;
                         _lastFetchTime = DateTime.Now;
-
                         ChillEnvPlugin.Log?.LogInfo($"🌤️ 天气解析成功: {weather}");
                         onComplete?.Invoke(weather);
                     }
@@ -311,17 +335,11 @@ namespace ChillWithYou.EnvSync
         {
             try
             {
-                // 查找 "now": 部分
                 int nowIndex = json.IndexOf("\"now\"");
                 if (nowIndex < 0) return null;
 
-                // 提取 code
                 int code = ExtractIntValue(json, "\"code\":\"", "\"");
-
-                // 提取 temperature  
                 int temp = ExtractIntValue(json, "\"temperature\":\"", "\"");
-
-                // 提取 text
                 string text = ExtractStringValue(json, "\"text\":\"", "\"");
 
                 if (string.IsNullOrEmpty(text)) return null;
@@ -335,10 +353,7 @@ namespace ChillWithYou.EnvSync
                     UpdateTime = DateTime.Now
                 };
             }
-            catch
-            {
-                return null;
-            }
+            catch { return null; }
         }
 
         private static int ExtractIntValue(string json, string prefix, string suffix)
@@ -346,13 +361,10 @@ namespace ChillWithYou.EnvSync
             int start = json.IndexOf(prefix);
             if (start < 0) return 0;
             start += prefix.Length;
-
             int end = json.IndexOf(suffix, start);
             if (end < 0) return 0;
-
             string value = json.Substring(start, end - start);
-            int result;
-            int.TryParse(value, out result);
+            int.TryParse(value, out int result);
             return result;
         }
 
@@ -361,47 +373,21 @@ namespace ChillWithYou.EnvSync
             int start = json.IndexOf(prefix);
             if (start < 0) return null;
             start += prefix.Length;
-
             int end = json.IndexOf(suffix, start);
             if (end < 0) return null;
-
             return json.Substring(start, end - start);
         }
 
         private static WeatherCondition MapCodeToCondition(int code)
         {
-            // 晴天: 0-3
-            if (code >= 0 && code <= 3)
-                return WeatherCondition.Clear;
-
-            // 多云/阴天: 4-9
-            if (code >= 4 && code <= 9)
-                return WeatherCondition.Cloudy;
-
-            // 雨天: 10-20 (阵雨、雷阵雨、各种雨、冻雨、雨夹雪)
-            if (code >= 10 && code <= 20)
-                return WeatherCondition.Rainy;
-
-            // 雪天: 21-25
-            if (code >= 21 && code <= 25)
-                return WeatherCondition.Snowy;
-
-            // 浮尘/扬沙/沙尘暴: 26-29 -> 当作阴天
-            if (code >= 26 && code <= 29)
-                return WeatherCondition.Cloudy;
-
-            // 雾/霾: 30-31
-            if (code >= 30 && code <= 31)
-                return WeatherCondition.Foggy;
-
-            // 风: 32-36 -> 当作阴天
-            if (code >= 32 && code <= 36)
-                return WeatherCondition.Cloudy;
-
-            // 冷/热: 37-38 -> 晴天
-            if (code >= 37 && code <= 38)
-                return WeatherCondition.Clear;
-
+            if (code >= 0 && code <= 3) return WeatherCondition.Clear;
+            if (code >= 4 && code <= 9) return WeatherCondition.Cloudy;
+            if (code >= 10 && code <= 20) return WeatherCondition.Rainy;
+            if (code >= 21 && code <= 25) return WeatherCondition.Snowy;
+            if (code >= 26 && code <= 29) return WeatherCondition.Cloudy;
+            if (code >= 30 && code <= 31) return WeatherCondition.Foggy;
+            if (code >= 32 && code <= 36) return WeatherCondition.Cloudy;
+            if (code >= 37 && code <= 38) return WeatherCondition.Clear;
             return WeatherCondition.Unknown;
         }
     }
@@ -412,83 +398,36 @@ namespace ChillWithYou.EnvSync
         private EnvironmentType? _lastAppliedEnv;
         private bool _isFetching;
 
-        // 互斥组1 - 基础环境（必须有且只有一个）
         private static readonly EnvironmentType[] BaseEnvironments = new[]
         {
-            EnvironmentType.Day,
-            EnvironmentType.Sunset,
-            EnvironmentType.Night,
-            EnvironmentType.Cloudy
+            EnvironmentType.Day, EnvironmentType.Sunset, EnvironmentType.Night, EnvironmentType.Cloudy
         };
 
-        // 互斥组2 - 降水天气（最多一个，可以没有）
-        // 【修复】添加了 Snow，并调整了顺序（优先处理雷雨，防止关闭大雨后雷雨残留）
         private static readonly EnvironmentType[] PrecipitationWeathers = new[]
         {
-            EnvironmentType.ThunderRain, // 优先关闭雷雨
-            EnvironmentType.HeavyRain,
-            EnvironmentType.LightRain,
-            EnvironmentType.Snow         // 修复：添加雪天
+            EnvironmentType.ThunderRain, EnvironmentType.HeavyRain, EnvironmentType.LightRain, EnvironmentType.Snow
         };
 
         private static readonly EnvironmentType[] MainEnvironments = new[]
         {
-            EnvironmentType.Day,
-            EnvironmentType.Sunset,
-            EnvironmentType.Night,
-            EnvironmentType.Cloudy,
-            EnvironmentType.LightRain,
-            EnvironmentType.HeavyRain,
-            EnvironmentType.ThunderRain,
-            EnvironmentType.Snow         // 修复：添加雪天
+            EnvironmentType.Day, EnvironmentType.Sunset, EnvironmentType.Night, EnvironmentType.Cloudy,
+            EnvironmentType.LightRain, EnvironmentType.HeavyRain, EnvironmentType.ThunderRain, EnvironmentType.Snow
         };
 
         private void Start()
         {
             _nextTickTime = Time.time + 15f;
             ChillEnvPlugin.Log?.LogInfo("Runner 启动，15秒后首次同步");
-
-            // 显示配置状态
-            bool weatherEnabled = ChillEnvPlugin.Cfg_EnableWeatherSync.Value;
-            string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
-            string location = ChillEnvPlugin.Cfg_Location.Value;
-
-            if (weatherEnabled && !string.IsNullOrEmpty(apiKey))
-            {
-                ChillEnvPlugin.Log?.LogInfo($"天气同步已启用，城市: {location}");
-            }
-            else
-            {
-                ChillEnvPlugin.Log?.LogInfo("天气同步未启用，仅按时间同步");
-            }
         }
 
         private void Update()
         {
-            if (!ChillEnvPlugin.Initialized || EnvRegistry.Count == 0)
-                return;
+            if (!ChillEnvPlugin.Initialized || EnvRegistry.Count == 0) return;
 
-            // F9: 手动同步
-            if (Input.GetKeyDown(KeyCode.F9))
-            {
-                ChillEnvPlugin.Log?.LogInfo("F9: 手动触发同步");
-                TriggerSync();
-            }
+            if (Input.GetKeyDown(KeyCode.F9)) TriggerSync();
+            if (Input.GetKeyDown(KeyCode.F8)) ShowStatus();
+            if (Input.GetKeyDown(KeyCode.F7)) ForceRefreshWeather();
 
-            // F8: 显示状态
-            if (Input.GetKeyDown(KeyCode.F8))
-            {
-                ShowStatus();
-            }
-
-            // F7: 手动刷新天气
-            if (Input.GetKeyDown(KeyCode.F7))
-            {
-                ChillEnvPlugin.Log?.LogInfo("F7: 强制刷新天气");
-                ForceRefreshWeather();
-            }
-
-            // 定时同步
             if (Time.time >= _nextTickTime)
             {
                 int minutes = Mathf.Max(1, ChillEnvPlugin.Cfg_WeatherRefreshMinutes.Value);
@@ -502,46 +441,22 @@ namespace ChillWithYou.EnvSync
             var now = DateTime.Now;
             ChillEnvPlugin.Log?.LogInfo($"--- 状态 [{now:HH:mm:ss}] ---");
             ChillEnvPlugin.Log?.LogInfo($"插件记录: {_lastAppliedEnv}");
-
             var currentActive = GetCurrentActiveEnvironment();
             ChillEnvPlugin.Log?.LogInfo($"游戏实际: {currentActive}");
-
-            var cached = WeatherService.CachedWeather;
-            if (cached != null)
-            {
-                ChillEnvPlugin.Log?.LogInfo($"缓存天气: {cached}");
-            }
-            else
-            {
-                ChillEnvPlugin.Log?.LogInfo("缓存天气: 无");
-            }
-
-            bool weatherEnabled = ChillEnvPlugin.Cfg_EnableWeatherSync.Value;
-            ChillEnvPlugin.Log?.LogInfo($"天气同步: {(weatherEnabled ? "已启用" : "未启用")}");
         }
 
         private void ForceRefreshWeather()
         {
             if (_isFetching) return;
-
             string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
             string location = ChillEnvPlugin.Cfg_Location.Value;
-
-            if (string.IsNullOrEmpty(apiKey))
-            {
-                ChillEnvPlugin.Log?.LogWarning("API Key 未配置");
-                return;
-            }
+            if (string.IsNullOrEmpty(apiKey)) return;
 
             _isFetching = true;
             StartCoroutine(WeatherService.FetchWeather(apiKey, location, (weather) =>
             {
                 _isFetching = false;
-                if (weather != null)
-                {
-                    ChillEnvPlugin.Log?.LogInfo($"天气刷新完成: {weather}");
-                    ApplyEnvironment(weather);
-                }
+                if (weather != null) ApplyEnvironment(weather);
             }));
         }
 
@@ -552,28 +467,17 @@ namespace ChillWithYou.EnvSync
 
             if (weatherEnabled && !string.IsNullOrEmpty(apiKey) && !_isFetching)
             {
-                // 使用天气API同步
                 string location = ChillEnvPlugin.Cfg_Location.Value;
                 _isFetching = true;
-
                 StartCoroutine(WeatherService.FetchWeather(apiKey, location, (weather) =>
                 {
                     _isFetching = false;
-                    if (weather != null)
-                    {
-                        ApplyEnvironment(weather);
-                    }
-                    else
-                    {
-                        // API失败，回退到时间同步
-                        ChillEnvPlugin.Log?.LogWarning("天气API失败，回退到时间同步");
-                        ApplyTimeBasedEnvironment();
-                    }
+                    if (weather != null) ApplyEnvironment(weather);
+                    else ApplyTimeBasedEnvironment();
                 }));
             }
             else
             {
-                // 仅按时间同步
                 ApplyTimeBasedEnvironment();
             }
         }
@@ -583,24 +487,16 @@ namespace ChillWithYou.EnvSync
             try
             {
                 var windowViewDic = SaveDataManager.Instance.WindowViewDic;
-
                 foreach (var envType in MainEnvironments)
                 {
                     WindowViewType windowType;
                     if (Enum.TryParse(envType.ToString(), out windowType))
                     {
-                        if (windowViewDic.ContainsKey(windowType) && windowViewDic[windowType].IsActive)
-                        {
-                            return envType;
-                        }
+                        if (windowViewDic.ContainsKey(windowType) && windowViewDic[windowType].IsActive) return envType;
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                ChillEnvPlugin.Log?.LogWarning($"获取当前环境失败: {ex.Message}");
-            }
-
+            catch { }
             return null;
         }
 
@@ -615,10 +511,7 @@ namespace ChillWithYou.EnvSync
                     return windowViewDic.ContainsKey(windowType) && windowViewDic[windowType].IsActive;
                 }
             }
-            catch (Exception ex)
-            {
-                ChillEnvPlugin.Log?.LogWarning($"检查环境状态失败: {ex.Message}");
-            }
+            catch { }
             return false;
         }
 
@@ -626,13 +519,12 @@ namespace ChillWithYou.EnvSync
         {
             if (EnvRegistry.TryGet(envType, out var ctrl))
             {
-                try
+                // 如果当前没开，就点一下 MainIcon (它是Toggle)
+                if (!IsEnvironmentActive(envType))
                 {
-                    ctrl.ChangeWindowView(ChangeType.Activate);
-                }
-                catch (Exception ex)
-                {
-                    ChillEnvPlugin.Log?.LogError($"激活 [{envType}] 失败: {ex}");
+                    ChillEnvPlugin.SimulateClickMainIcon(ctrl);
+                    // 补刀：如果模拟点击失败（比如方法名不对），再尝试 Service
+                    ChillEnvPlugin.CallServiceChangeWeather(envType);
                 }
             }
         }
@@ -641,73 +533,58 @@ namespace ChillWithYou.EnvSync
         {
             if (EnvRegistry.TryGet(envType, out var ctrl))
             {
-                try
+                // 如果当前开着，就点一下 MainIcon (Toggle 会把它关掉)
+                if (IsEnvironmentActive(envType))
                 {
-                    ctrl.ChangeWindowView(ChangeType.Deactivate);
-                }
-                catch (Exception ex)
-                {
-                    ChillEnvPlugin.Log?.LogWarning($"关闭 [{envType}] 失败: {ex}");
+                    ChillEnvPlugin.SimulateClickMainIcon(ctrl);
+
+                    // 特殊处理：如果是 3.3.0 那样 UI 没关掉，可能需要手动 Service 修正
+                    // 但通常 MainIcon 会处理好一切
+                    // 如果模拟点击成功，SaveData 和 Service 应该会自动更新
                 }
             }
         }
 
         private void ActivateEnvironmentWithMutex(EnvironmentType target)
         {
-            // 判断目标属于哪个互斥组
-            bool isBaseEnv = System.Array.IndexOf(BaseEnvironments, target) >= 0;
-            bool isPrecipitation = System.Array.IndexOf(PrecipitationWeathers, target) >= 0;
+            // 策略：
+            // 1. 先关闭互斥组里的其他环境 (通过模拟点击)
+            // 2. 再开启目标环境 (通过模拟点击)
+            // 3. 最后用 Service 兜底 (确保天气层同步)
+
+            bool isBaseEnv = Array.IndexOf(BaseEnvironments, target) >= 0;
+            bool isPrecipitation = Array.IndexOf(PrecipitationWeathers, target) >= 0;
 
             if (isBaseEnv)
             {
-                // 关闭其他基础环境
                 foreach (var env in BaseEnvironments)
-                {
-                    if (env != target && IsEnvironmentActive(env))
-                    {
-                        DeactivateEnvironment(env);
-                        ChillEnvPlugin.Log?.LogInfo($"[互斥] 关闭基础环境: {env}");
-                    }
-                }
+                    if (env != target) DeactivateEnvironment(env);
             }
 
             if (isPrecipitation)
             {
-                // 关闭其他降水天气
                 foreach (var env in PrecipitationWeathers)
-                {
-                    if (env != target && IsEnvironmentActive(env))
-                    {
-                        DeactivateEnvironment(env);
-                        ChillEnvPlugin.Log?.LogInfo($"[互斥] 关闭降水天气: {env}");
-                    }
-                }
+                    if (env != target) DeactivateEnvironment(env);
             }
 
-            // 激活目标
-            if (!IsEnvironmentActive(target))
-            {
-                ActivateEnvironment(target);
-                ChillEnvPlugin.Log?.LogInfo($"[激活] {target}");
-            }
+            // 开启目标
+            ActivateEnvironment(target);
+            ChillEnvPlugin.Log?.LogInfo($"[决策] 切换至 {target}");
+
+            // 兜底同步 Service (防止点击没触发天气系统)
+            ChillEnvPlugin.CallServiceChangeWeather(target);
         }
 
         private void ClearAllWeatherEffects()
         {
-            // 晴天 = 只保留基础环境中的时间类，关闭 Cloudy 和所有降水
-            if (IsEnvironmentActive(EnvironmentType.Cloudy))
-            {
-                DeactivateEnvironment(EnvironmentType.Cloudy);
-                ChillEnvPlugin.Log?.LogInfo("[晴天] 关闭多云");
-            }
+            if (IsEnvironmentActive(EnvironmentType.Cloudy)) DeactivateEnvironment(EnvironmentType.Cloudy);
 
-            // 遍历所有降水（现在包括 Snow 和 ThunderRain）
             foreach (var env in PrecipitationWeathers)
             {
                 if (IsEnvironmentActive(env))
                 {
                     DeactivateEnvironment(env);
-                    ChillEnvPlugin.Log?.LogInfo($"[晴天] 关闭降水: {env}");
+                    ChillEnvPlugin.Log?.LogInfo($"[清除] {env}");
                 }
             }
         }
@@ -716,151 +593,69 @@ namespace ChillWithYou.EnvSync
         {
             DateTime now = DateTime.Now;
             TimeSpan currentTime = now.TimeOfDay;
-
             TimeSpan sunrise, sunset;
-            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunriseTime.Value, out sunrise))
-                sunrise = new TimeSpan(6, 30, 0);
-            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunsetTime.Value, out sunset))
-                sunset = new TimeSpan(18, 30, 0);
+            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunriseTime.Value, out sunrise)) sunrise = new TimeSpan(6, 30, 0);
+            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunsetTime.Value, out sunset)) sunset = new TimeSpan(18, 30, 0);
 
             TimeSpan sunsetStart = sunset.Subtract(TimeSpan.FromHours(1));
             TimeSpan sunsetEnd = sunset.Add(TimeSpan.FromMinutes(30));
 
-            if (currentTime >= sunrise && currentTime < sunsetStart)
-            {
-                return EnvironmentType.Day;
-            }
-            else if (currentTime >= sunsetStart && currentTime < sunsetEnd)
-            {
-                return EnvironmentType.Sunset;
-            }
-            else
-            {
-                return EnvironmentType.Night;
-            }
+            if (currentTime >= sunrise && currentTime < sunsetStart) return EnvironmentType.Day;
+            else if (currentTime >= sunsetStart && currentTime < sunsetEnd) return EnvironmentType.Sunset;
+            else return EnvironmentType.Night;
         }
 
         private void ApplyEnvironment(WeatherInfo weather)
         {
             DateTime now = DateTime.Now;
-            ChillEnvPlugin.Log?.LogInfo($"[天气决策] {weather.Text}(Code:{weather.Code}) + {now:HH:mm}");
+            ChillEnvPlugin.Log?.LogInfo($"[API] {weather.Text}(Code:{weather.Code})");
 
-            // 1. 先确定基础时间环境
             EnvironmentType timeEnv = GetTimeBasedEnvironment();
-
-            // 2. 根据天气代码决定天气效果
             int code = weather.Code;
 
-            if (code >= 0 && code <= 3)
+            if (code >= 0 && code <= 3) // 晴天
             {
-                // 晴/少云 - 只设置时间，清除天气效果
-                ChillEnvPlugin.Log?.LogInfo("[天气决策] 晴天，清除所有天气效果");
                 ClearAllWeatherEffects();
                 ActivateEnvironmentWithMutex(timeEnv);
             }
-            else if (code >= 4 && code <= 9)
+            else if (code >= 4 && code <= 9) // 阴天
             {
-                // 多云/阴天 - Cloudy 会替代时间环境
-                ChillEnvPlugin.Log?.LogInfo("[天气决策] 阴天/多云");
-                ClearAllWeatherEffects(); // 先清降水
+                ClearAllWeatherEffects();
                 ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
             }
-            else if (code >= 10 && code <= 12)
+            else if (code >= 10 && code <= 12) // 小雨
             {
-                // 小雨/阵雨
-                ChillEnvPlugin.Log?.LogInfo("[天气决策] 小雨/阵雨");
                 ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
                 ActivateEnvironmentWithMutex(EnvironmentType.LightRain);
             }
-            else if (code >= 13 && code <= 14)
+            else if (code >= 13 && code <= 14) // 大雨
             {
-                // 大雨/暴雨
-                ChillEnvPlugin.Log?.LogInfo("[天气决策] 大雨/暴雨");
                 ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
                 ActivateEnvironmentWithMutex(EnvironmentType.HeavyRain);
             }
-            else if (code >= 15 && code <= 18)
+            else if (code >= 15 && code <= 18) // 雷雨
             {
-                // 雷阵雨
-                ChillEnvPlugin.Log?.LogInfo("[天气决策] 雷阵雨");
                 ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
                 ActivateEnvironmentWithMutex(EnvironmentType.ThunderRain);
             }
-            else if (code >= 21 && code <= 25)
+            else if (code >= 21 && code <= 25) // 雪
             {
-                // 【修复】雪天逻辑实现
-                ChillEnvPlugin.Log?.LogInfo("[天气决策] 雪天");
-                ActivateEnvironmentWithMutex(EnvironmentType.Cloudy); // 雪天通常也是阴天背景
-                ActivateEnvironmentWithMutex(EnvironmentType.Snow);   // 开启雪
+                ActivateEnvironmentWithMutex(EnvironmentType.Cloudy);
+                ActivateEnvironmentWithMutex(EnvironmentType.Snow);
             }
             else
             {
-                // 其他未知天气，保守处理
-                ChillEnvPlugin.Log?.LogInfo($"[天气决策] 未知天气代码 {code}，使用默认时间环境");
                 ClearAllWeatherEffects();
                 ActivateEnvironmentWithMutex(timeEnv);
             }
-
-            ChillEnvPlugin.Log?.LogInfo("✅ 天气切换完成");
+            ChillEnvPlugin.Log?.LogInfo("✅ 完成");
         }
 
         private void ApplyTimeBasedEnvironment()
         {
-            DateTime now = DateTime.Now;
-            ChillEnvPlugin.Log?.LogInfo($"[时间决策] {now:HH:mm}");
-
             EnvironmentType targetEnv = GetTimeBasedEnvironment();
-
-            ChillEnvPlugin.Log?.LogInfo($"[时间决策] -> {targetEnv}");
             ClearAllWeatherEffects();
             ActivateEnvironmentWithMutex(targetEnv);
-            ChillEnvPlugin.Log?.LogInfo("✅ 时间切换完成");
-        }
-
-        private void SwitchToEnvironment(EnvironmentType targetEnv)
-        {
-            var currentActive = GetCurrentActiveEnvironment();
-
-            if (currentActive.HasValue && currentActive.Value == targetEnv)
-            {
-                ChillEnvPlugin.Log?.LogInfo("目标环境已激活，跳过");
-                _lastAppliedEnv = targetEnv;
-                return;
-            }
-
-            // 关闭当前环境
-            if (currentActive.HasValue && EnvRegistry.TryGet(currentActive.Value, out var oldCtrl))
-            {
-                try
-                {
-                    ChillEnvPlugin.Log?.LogInfo($"关闭 [{currentActive.Value}]");
-                    oldCtrl.ChangeWindowView(ChangeType.Deactivate);
-                }
-                catch (Exception ex)
-                {
-                    ChillEnvPlugin.Log?.LogWarning($"关闭失败: {ex.Message}");
-                }
-            }
-
-            // 激活目标环境
-            if (EnvRegistry.TryGet(targetEnv, out var ctrl))
-            {
-                try
-                {
-                    ChillEnvPlugin.Log?.LogInfo($"激活 [{targetEnv}]");
-                    ctrl.ChangeWindowView(ChangeType.Activate);
-                    _lastAppliedEnv = targetEnv;
-                    ChillEnvPlugin.Log?.LogInfo("✅ 切换成功");
-                }
-                catch (Exception ex)
-                {
-                    ChillEnvPlugin.Log?.LogError($"激活失败: {ex}");
-                }
-            }
-            else
-            {
-                ChillEnvPlugin.Log?.LogWarning($"找不到 [{targetEnv}] 控制器");
-            }
         }
     }
 
@@ -871,10 +666,7 @@ namespace ChillWithYou.EnvSync
 
         internal static void Register(EnvironmentType type, EnviromentController ctrl)
         {
-            if (ctrl != null && !_map.ContainsKey(type))
-            {
-                _map[type] = ctrl;
-            }
+            if (ctrl != null && !_map.ContainsKey(type)) _map[type] = ctrl;
         }
 
         internal static bool TryGet(EnvironmentType type, out EnviromentController ctrl)
@@ -899,6 +691,36 @@ namespace ChillWithYou.EnvSync
         static void Postfix(EnviromentController __instance)
         {
             EnvRegistry.Register(__instance.EnvironmentType, __instance);
+        }
+    }
+
+    [HarmonyPatch(typeof(FacilityEnviroment), "Setup")]
+    internal static class FacilityEnvPatch
+    {
+        static void Postfix(FacilityEnviroment __instance)
+        {
+            try
+            {
+                FieldInfo field = typeof(FacilityEnviroment).GetField("_windowViewService", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (field != null)
+                {
+                    object service = field.GetValue(__instance);
+                    if (service != null)
+                    {
+                        ChillEnvPlugin.WindowViewServiceInstance = service;
+                        ChillEnvPlugin.ChangeWeatherMethod = service.GetType().GetMethod("ChangeWeatherAndTime", BindingFlags.Instance | BindingFlags.Public);
+
+                        if (ChillEnvPlugin.ChangeWeatherMethod != null)
+                        {
+                            ChillEnvPlugin.Log?.LogInfo("✅ 成功捕获 WindowViewService.ChangeWeatherAndTime");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ChillEnvPlugin.Log?.LogError($"捕获 Service 失败: {ex}");
+            }
         }
     }
 }
