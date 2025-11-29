@@ -39,7 +39,6 @@ namespace ChillEnvMod
 
         private void Update()
         {
-            // 执行需要在主线程运行的操作
             while (_mainThreadQueue.TryDequeue(out var action))
             {
                 try { action?.Invoke(); }
@@ -50,6 +49,16 @@ namespace ChillEnvMod
         internal static void EnqueueOnMainThread(Action action)
         {
             if (action != null) _mainThreadQueue.Enqueue(action);
+        }
+    }
+
+    // ============ 解锁所有窗景 ============
+    [HarmonyPatch(typeof(WindowViewData), "IsUnlocked", MethodType.Getter)]
+    internal static class WindowViewUnlockPatch
+    {
+        static void Postfix(ref bool __result)
+        {
+            __result = true;
         }
     }
 
@@ -67,13 +76,11 @@ namespace ChillEnvMod
     // ============ 主运行器 ============
     internal static class AutoEnvRunner
     {
-        // Open-Meteo API（无需 API Key）
         private const string API_URL =
             "https://api.open-meteo.com/v1/forecast?latitude=31.23&longitude=121.47&current=weather_code,is_day&timezone=auto";
 
-        private const int CHECK_INTERVAL_SECONDS = 300; // 5分钟检查一次
+        private const int CHECK_INTERVAL_SECONDS = 300;
 
-        // ============ 环境分组 ============
         private static readonly WindowViewType[] PrecipitationViews =
         {
             WindowViewType.LightRain,
@@ -81,13 +88,11 @@ namespace ChillEnvMod
             WindowViewType.ThunderRain
         };
 
-        // ============ 主循环 ============
         public static void StartLoop()
         {
             ChillEnvPlugin.Log?.LogInfo("[AutoEnv] 等待游戏初始化...");
             Task.Run(async () =>
             {
-                // 等待 FacilityEnviroment 被捕获
                 while (ChillEnvPlugin.Facility == null)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(1));
@@ -111,7 +116,6 @@ namespace ChillEnvMod
             });
         }
 
-        // ============ 获取并应用天气 ============
         private static async Task FetchAndApplyWeather()
         {
             ChillEnvPlugin.Log?.LogInfo("[AutoEnv] 正在获取天气数据...");
@@ -121,14 +125,14 @@ namespace ChillEnvMod
                 client.Timeout = TimeSpan.FromSeconds(10);
                 var response = await client.GetStringAsync(API_URL);
 
-                // 简单解析 JSON（避免依赖 Newtonsoft）
-                // 示例: {"current":{"weather_code":0,"is_day":1,...}}
-                int weatherCode = TryExtractInt(response, "\\\"weather_code\\\"\\s*:\\s*(?<v>-?\\d+)");
-                int isDay = TryExtractInt(response, "\\\"is_day\\\"\\s*:\\s*(?<v>-?\\d+)");
+                ChillEnvPlugin.Log?.LogInfo($"[AutoEnv] API 返回: {response.Substring(0, Math.Min(200, response.Length))}...");
 
-                ChillEnvPlugin.Log?.LogInfo($"[AutoEnv] 天气代码={weatherCode}, 白天={isDay}");
+                // 修正正则：JSON 中的引号不需要转义
+                int weatherCode = TryExtractInt(response, "\"weather_code\"\\s*:\\s*(?<v>-?\\d+)");
+                int isDay = TryExtractInt(response, "\"is_day\"\\s*:\\s*(?<v>-?\\d+)");
 
-                // 在主线程应用环境
+                ChillEnvPlugin.Log?.LogInfo($"[AutoEnv] 解析结果: 天气代码={weatherCode}, 白天={isDay}");
+
                 ChillEnvPlugin.EnqueueOnMainThread(() =>
                 {
                     ApplyWeather(weatherCode, isDay == 1);
@@ -144,14 +148,19 @@ namespace ChillEnvMod
                 if (m.Success)
                 {
                     int v;
-                    if (int.TryParse(m.Groups["v"].Value, out v)) return v;
+                    if (int.TryParse(m.Groups["v"].Value, out v))
+                    {
+                        return v;
+                    }
                 }
             }
-            catch { }
-            return 0;
+            catch (Exception ex)
+            {
+                ChillEnvPlugin.Log?.LogError($"[AutoEnv] 正则解析失败: {ex.Message}");
+            }
+            return -1; // 返回 -1 表示解析失败，而不是 0（0 是有效的天气代码）
         }
 
-        // ============ 状态检查 ============
         private static bool IsWindowActive(WindowViewType type)
         {
             var dic = SaveDataManager.Instance?.WindowViewDic;
@@ -181,7 +190,6 @@ namespace ChillEnvMod
             ChillEnvPlugin.Log?.LogInfo($"[状态] 时间={timeState}, 降水={(activePrecip.Count == 0 ? "无" : string.Join(", ", activePrecip))}, 雪景={snowActive}");
         }
 
-        // ============ 清除所有降水 ============
         private static void ClearPrecipitation(FacilityEnviroment fac)
         {
             foreach (var w in PrecipitationViews)
@@ -194,10 +202,8 @@ namespace ChillEnvMod
             }
         }
 
-        // ============ 设置单一降水类型 ============
         private static void SetPrecipitation(FacilityEnviroment fac, WindowViewType target)
         {
-            // 先关闭其他降水
             foreach (var w in PrecipitationViews)
             {
                 if (w != target && IsWindowActive(w))
@@ -207,7 +213,6 @@ namespace ChillEnvMod
                 }
             }
 
-            // 激活目标降水
             if (!IsWindowActive(target))
             {
                 ChillEnvPlugin.Log?.LogInfo($"[操作] 激活降水: {target}");
@@ -215,10 +220,8 @@ namespace ChillEnvMod
             }
         }
 
-        // ============ 设置基础时间 ============
         private static void SetBaseTime(FacilityEnviroment fac, WindowViewType target)
         {
-            // 检查是否已经是目标状态
             if (IsWindowActive(target))
             {
                 ChillEnvPlugin.Log?.LogInfo($"[跳过] 时间已是: {target}");
@@ -244,7 +247,6 @@ namespace ChillEnvMod
             }
         }
 
-        // ============ 主应用方法 ============
         private static void ApplyWeather(int weatherCode, bool isDay)
         {
             var fac = ChillEnvPlugin.Facility;
@@ -254,82 +256,78 @@ namespace ChillEnvMod
                 return;
             }
 
-            // 记录当前状态
+            if (weatherCode < 0)
+            {
+                ChillEnvPlugin.Log?.LogWarning("[AutoEnv] 天气代码解析失败，跳过本次同步");
+                return;
+            }
+
             LogCurrentState();
 
             ChillEnvPlugin.Log?.LogInfo($"[AutoEnv] 应用天气: Code={weatherCode}, IsDay={isDay}");
 
-            // Open-Meteo WMO Weather Code 解析
             switch (weatherCode)
             {
-                // ======== 晴天 (0-3) ========
-                case 0:  // Clear sky
-                case 1:  // Mainly clear
-                case 2:  // Partly cloudy
-                case 3:  // Overcast
+                case 0:
+                case 1:
+                case 2:
+                case 3:
                     if (weatherCode <= 1)
                     {
-                        // 真正的晴天
                         SetBaseTime(fac, isDay ? WindowViewType.Day : WindowViewType.Night);
                     }
                     else
                     {
-                        // 多云/阴天
                         SetBaseTime(fac, WindowViewType.Cloudy);
                     }
                     ClearPrecipitation(fac);
                     ClearSnowIfNotSnowing(fac, weatherCode);
                     break;
 
-                // ======== 雾 (45, 48) ========
-                case 45: // Fog
-                case 48: // Depositing rime fog
+                case 45:
+                case 48:
                     SetBaseTime(fac, WindowViewType.Cloudy);
                     ClearPrecipitation(fac);
                     break;
 
-                // ======== 毛毛雨 (51, 53, 55, 56, 57) ========
-                case 51: // Light drizzle
-                case 53: // Moderate drizzle
-                case 55: // Dense drizzle
-                case 56: // Light freezing drizzle
-                case 57: // Dense freezing drizzle
+                case 51:
+                case 53:
+                case 55:
+                case 56:
+                case 57:
                     SetBaseTime(fac, WindowViewType.Cloudy);
                     SetPrecipitation(fac, WindowViewType.LightRain);
                     break;
 
-                // ======== 雨 (61, 63, 65, 66, 67, 80, 81, 82) ========
-                case 61: // Slight rain
+                case 61:
                     SetBaseTime(fac, WindowViewType.Cloudy);
                     SetPrecipitation(fac, WindowViewType.LightRain);
                     break;
-                case 63: // Moderate rain
-                case 65: // Heavy rain
-                case 66: // Light freezing rain
-                case 67: // Heavy freezing rain
+                case 63:
+                case 65:
+                case 66:
+                case 67:
                     SetBaseTime(fac, WindowViewType.Cloudy);
                     SetPrecipitation(fac, WindowViewType.HeavyRain);
                     break;
-                case 80: // Slight rain showers
+                case 80:
                     SetBaseTime(fac, WindowViewType.Cloudy);
                     SetPrecipitation(fac, WindowViewType.LightRain);
                     break;
-                case 81: // Moderate rain showers
-                case 82: // Violent rain showers
+                case 81:
+                case 82:
                     SetBaseTime(fac, WindowViewType.Cloudy);
                     SetPrecipitation(fac, WindowViewType.HeavyRain);
                     break;
 
-                // ======== 雪 (71, 73, 75, 77, 85, 86) ========
-                case 71: // Slight snow fall
-                case 73: // Moderate snow fall
-                case 75: // Heavy snow fall
-                case 77: // Snow grains
-                case 85: // Slight snow showers
-                case 86: // Heavy snow showers
+                case 71:
+                case 73:
+                case 75:
+                case 77:
+                case 85:
+                case 86:
                     SetBaseTime(fac, WindowViewType.Cloudy);
                     ClearPrecipitation(fac);
-                    // 激活雪景
                     if (!IsWindowActive(WindowViewType.Snow))
                     {
                         ChillEnvPlugin.Log?.LogInfo("[操作] 激活雪景");
@@ -337,15 +335,13 @@ namespace ChillEnvMod
                     }
                     break;
 
-                // ======== 雷雨 (95, 96, 99) ========
-                case 95: // Thunderstorm
-                case 96: // Thunderstorm with slight hail
-                case 99: // Thunderstorm with heavy hail
+                case 95:
+                case 96:
+                case 99:
                     SetBaseTime(fac, WindowViewType.Cloudy);
                     SetPrecipitation(fac, WindowViewType.ThunderRain);
                     break;
 
-                // ======== 默认 ========
                 default:
                     ChillEnvPlugin.Log?.LogWarning($"[AutoEnv] 未知天气代码: {weatherCode}，使用默认");
                     SetBaseTime(fac, isDay ? WindowViewType.Day : WindowViewType.Night);
@@ -353,14 +349,11 @@ namespace ChillEnvMod
                     break;
             }
 
-            // 再次记录状态
             LogCurrentState();
         }
 
-        // ============ 非雪天时关闭雪景 ============
         private static void ClearSnowIfNotSnowing(FacilityEnviroment fac, int weatherCode)
         {
-            // 只有雪天代码才保留雪景
             bool isSnowWeather = weatherCode == 71 || weatherCode == 73 || weatherCode == 75
                               || weatherCode == 77 || weatherCode == 85 || weatherCode == 86;
 
