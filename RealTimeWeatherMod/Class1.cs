@@ -1,508 +1,782 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
+using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Networking;
 using Bulbul;
 
-namespace ChillEnvSync
+namespace ChillWithYou.EnvSync
 {
-    [BepInPlugin("com.yourname.chillroomsync", "Chill Room Weather Sync", "1.0.0")]
-    public class ChillEnvSync : BaseUnityPlugin
+    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "3.1.0")]
+    public class ChillEnvPlugin : BaseUnityPlugin
     {
-        // ========== 配置 ==========
-        private ConfigEntry<bool> _enableWeatherSync;
-        private ConfigEntry<string> _cityName;
-        private ConfigEntry<string> _apiKey;
-        private ConfigEntry<int> _syncIntervalMinutes;
+        internal static ChillEnvPlugin Instance;
+        internal static ManualLogSource Log;
+        internal static UnlockItemService UnlockItemServiceInstance;
+        internal static bool Initialized;
 
-        // ========== 状态 ==========
-        private float _lastSyncTime = -9999f;
-        private float _lastInitTryTime = 0f;
-        private WindowViewService _windowViewService;
-        private bool _isInitialized = false;
-        private ManualLogSource _log;
+        // 配置项
+        internal static ConfigEntry<int> Cfg_WeatherRefreshMinutes;
+        internal static ConfigEntry<string> Cfg_SunriseTime;
+        internal static ConfigEntry<string> Cfg_SunsetTime;
+        internal static ConfigEntry<string> Cfg_SeniverseKey;
+        internal static ConfigEntry<string> Cfg_Location;
+        internal static ConfigEntry<bool> Cfg_EnableWeatherSync;
 
-        // ========== 互斥组定义 ==========
-        private static readonly HashSet<WindowViewType> BaseTimeWeather = new HashSet<WindowViewType>
-        {
-            WindowViewType.Day,
-            WindowViewType.Sunset,
-            WindowViewType.Night,
-            WindowViewType.Cloudy
-        };
+        private static AutoEnvRunner _runner;
+        private static GameObject _runnerGO;
 
-        private static readonly HashSet<WindowViewType> PrecipitationWeather = new HashSet<WindowViewType>
-        {
-            WindowViewType.LightRain,
-            WindowViewType.HeavyRain,
-            WindowViewType.ThunderRain
-        };
-
-        // ========== 初始化 ==========
         private void Awake()
         {
-            _log = Logger;
+            Instance = this;
+            Log = Logger;
 
-            _enableWeatherSync = Config.Bind("General", "EnableWeatherSync", true, "启用天气同步");
-            _cityName = Config.Bind("General", "CityName", "北京", "城市名称");
-            _apiKey = Config.Bind("General", "ApiKey", "S-xxxxxxxx", "心知天气API密钥");
-            _syncIntervalMinutes = Config.Bind("General", "SyncIntervalMinutes", 30, "同步间隔(分钟)");
+            Log.LogInfo("【3.1.0】启动 - 支持心知天气同步");
 
-            _log.LogInfo("=== Chill Env Sync 插件已加载 ===");
-            _log.LogInfo($"配置: 城市={_cityName.Value}, 间隔={_syncIntervalMinutes.Value}分钟, 启用={_enableWeatherSync.Value}");
-        }
-
-        private void Update()
-        {
-            if (!_enableWeatherSync.Value) return;
-
-            // 尝试初始化（每2秒尝试一次，避免刷屏）
-            if (!_isInitialized)
-            {
-                if (Time.time - _lastInitTryTime >= 2f)
-                {
-                    _lastInitTryTime = Time.time;
-                    TryInitialize();
-                }
-                return;
-            }
-
-            // 定时同步
-            float interval = _syncIntervalMinutes.Value * 60f;
-            if (Time.time - _lastSyncTime >= interval)
-            {
-                _lastSyncTime = Time.time;
-                _log.LogInfo($"[定时触发] 开始天气同步，间隔={interval}秒");
-                StartCoroutine(FetchAndApplyWeather());
-            }
-        }
-
-        private void TryInitialize()
-        {
             try
             {
-                _log.LogInfo("[初始化] 正在查找 WindowViewService...");
-
-                // 方法1：直接查找
-                _windowViewService = FindObjectOfType<WindowViewService>();
-
-                if (_windowViewService != null)
-                {
-                    _isInitialized = true;
-                    _log.LogInfo($"[初始化] ✓ WindowViewService 已找到: {_windowViewService.name}");
-                    _log.LogInfo($"[初始化] GameObject路径: {GetGameObjectPath(_windowViewService.gameObject)}");
-
-                    // 立即执行一次同步
-                    _lastSyncTime = Time.time;
-                    StartCoroutine(FetchAndApplyWeather());
-                }
-                else
-                {
-                    _log.LogWarning("[初始化] ✗ WindowViewService 未找到，2秒后重试...");
-
-                    // 打印场景中的所有根对象，帮助调试
-                    var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-                    _log.LogInfo($"[初始化] 当前场景: {scene.name}");
-
-                    var rootObjects = scene.GetRootGameObjects();
-                    _log.LogInfo($"[初始化] 场景根对象数量: {rootObjects.Length}");
-                    foreach (var root in rootObjects)
-                    {
-                        _log.LogInfo($"  - {root.name}");
-                    }
-                }
+                var harmony = new Harmony("ChillWithYou.EnvSync");
+                harmony.PatchAll();
             }
             catch (Exception ex)
             {
-                _log.LogError($"[初始化] 异常: {ex.Message}\n{ex.StackTrace}");
+                Log.LogError($"Harmony 失败: {ex}");
+            }
+
+            InitConfig();
+
+            try
+            {
+                _runnerGO = new GameObject("ChillEnvSyncRunner");
+                _runnerGO.hideFlags = HideFlags.HideAndDontSave;
+                UnityEngine.Object.DontDestroyOnLoad(_runnerGO);
+                _runnerGO.SetActive(true);
+                _runner = _runnerGO.AddComponent<AutoEnvRunner>();
+                _runner.enabled = true;
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"Runner 创建失败: {ex}");
             }
         }
 
-        private string GetGameObjectPath(GameObject obj)
+        private void InitConfig()
         {
-            string path = obj.name;
-            Transform parent = obj.transform.parent;
-            while (parent != null)
-            {
-                path = parent.name + "/" + path;
-                parent = parent.parent;
-            }
-            return path;
+            Cfg_WeatherRefreshMinutes = Config.Bind("WeatherSync", "RefreshMinutes", 30, "自动刷新间隔(分钟)");
+            Cfg_SunriseTime = Config.Bind("TimeConfig", "Sunrise", "06:30", "日出时间");
+            Cfg_SunsetTime = Config.Bind("TimeConfig", "Sunset", "18:30", "日落时间");
+
+            Cfg_EnableWeatherSync = Config.Bind("WeatherAPI", "EnableWeatherSync", false, "是否启用天气API同步（需要填写API Key）");
+            Cfg_SeniverseKey = Config.Bind("WeatherAPI", "SeniverseKey", "", "心知天气 API Key");
+            Cfg_Location = Config.Bind("WeatherAPI", "Location", "beijing", "城市名称（拼音或中文，如 beijing、上海、ip 表示自动定位）");
         }
 
-        // ========== 天气获取 ==========
-        private IEnumerator FetchAndApplyWeather()
+        internal static void TryInitializeOnce(UnlockItemService svc)
         {
-            string city = _cityName.Value;
-            string apiKey = _apiKey.Value;
+            if (Initialized || svc == null) return;
 
-            _log.LogInfo($"[天气请求] 城市: {city}, API密钥: {apiKey.Substring(0, Math.Min(8, apiKey.Length))}...");
+            ForceUnlockAllEnvironments(svc);
+            ForceUnlockAllDecorations(svc);
 
-            // 检查API密钥是否是默认值
-            if (apiKey == "S-xxxxxxxx" || string.IsNullOrEmpty(apiKey))
+            Initialized = true;
+            Log?.LogInfo("初始化完成，环境和装饰品已解锁");
+        }
+
+        private static void ForceUnlockAllEnvironments(UnlockItemService svc)
+        {
+            try
             {
-                _log.LogError("[天气请求] API密钥未配置！请在 BepInEx/config/com.yourname.chillroomsync.cfg 中设置");
+                var envProp = svc.GetType().GetProperty("Environment");
+                var unlockEnvObj = envProp.GetValue(svc);
+
+                var dictField = unlockEnvObj.GetType().GetField("_environmentDic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                var dict = dictField.GetValue(unlockEnvObj) as IDictionary;
+
+                int count = 0;
+                foreach (DictionaryEntry entry in dict)
+                {
+                    var data = entry.Value;
+                    var lockField = data.GetType().GetField("_isLocked", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                    var reactive = lockField.GetValue(data);
+                    var propValue = reactive.GetType().GetProperty("Value");
+                    propValue.SetValue(reactive, false, null);
+                    count++;
+                }
+                Log?.LogInfo($"✅ 已解锁 {count} 个环境");
+            }
+            catch (Exception ex)
+            {
+                Log?.LogError("环境解锁异常: " + ex.Message);
+            }
+        }
+
+        private static void ForceUnlockAllDecorations(UnlockItemService svc)
+        {
+            try
+            {
+                var decoProp = svc.GetType().GetProperty("Decoration");
+                if (decoProp == null) return;
+
+                var unlockDecoObj = decoProp.GetValue(svc);
+                if (unlockDecoObj == null) return;
+
+                var dictField = unlockDecoObj.GetType().GetField("_decorationDic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (dictField == null) return;
+
+                var dict = dictField.GetValue(unlockDecoObj) as IDictionary;
+                if (dict == null) return;
+
+                int count = 0;
+                foreach (DictionaryEntry entry in dict)
+                {
+                    var data = entry.Value;
+                    var lockField = data.GetType().GetField("_isLocked", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                    if (lockField == null) continue;
+
+                    var reactive = lockField.GetValue(data);
+                    if (reactive == null) continue;
+
+                    var propValue = reactive.GetType().GetProperty("Value");
+                    if (propValue == null) continue;
+
+                    propValue.SetValue(reactive, false, null);
+                    count++;
+
+                    Log?.LogInfo($"🔓 已解锁装饰品: {entry.Key}");
+                }
+                Log?.LogInfo($"✅ 已解锁 {count} 个装饰品");
+            }
+            catch (Exception ex)
+            {
+                Log?.LogError("装饰品解锁异常: " + ex.Message);
+            }
+        }
+    }
+
+    // 天气数据
+    public enum WeatherCondition
+    {
+        Clear,      // 晴天
+        Cloudy,     // 多云/阴天
+        Rainy,      // 雨天
+        Snowy,      // 雪天
+        Foggy,      // 雾/霾
+        Unknown
+    }
+
+    public class WeatherInfo
+    {
+        public WeatherCondition Condition;
+        public int Temperature;
+        public string Text;
+        public int Code;
+        public DateTime UpdateTime;
+
+        public override string ToString()
+        {
+            return $"{Text}({Condition}), {Temperature}°C, Code={Code}";
+        }
+    }
+
+    // 心知天气 JSON 解析
+    [Serializable]
+    public class WeatherApiResponse
+    {
+        public WeatherResult[] results;
+    }
+
+    [Serializable]
+    public class WeatherResult
+    {
+        public WeatherLocation location;
+        public WeatherNow now;
+    }
+
+    [Serializable]
+    public class WeatherLocation
+    {
+        public string name;
+    }
+
+    [Serializable]
+    public class WeatherNow
+    {
+        public string text;
+        public string code;
+        public string temperature;
+    }
+
+    public class WeatherService
+    {
+        private static WeatherInfo _cachedWeather;
+        private static DateTime _lastFetchTime;
+        private static readonly TimeSpan CacheExpiry = TimeSpan.FromMinutes(5);
+
+        // 依据天气文本到环境的映射（大小写不敏感）
+        private static readonly Dictionary<string, EnvironmentType> WeatherToEnvironment = new Dictionary<string, EnvironmentType>(StringComparer.OrdinalIgnoreCase)
+        {
+            // 晴天/少云 -> 根据时间自动选择（白天/日落/夜晚）
+            {"Clear", EnvironmentType.Day},
+            {"Clouds", EnvironmentType.Cloudy},
+
+            // 雨天
+            {"Drizzle", EnvironmentType.LightRain},      // 毛毛雨
+            {"Rain", EnvironmentType.HeavyRain},          // 普通雨
+            {"Thunderstorm", EnvironmentType.ThunderRain}, // 雷雨
+
+            // 雪
+            {"Snow", EnvironmentType.Snow},
+
+            // 其他天气 -> 映射到最接近的
+            {"Mist", EnvironmentType.Cloudy},
+            {"Fog", EnvironmentType.Cloudy},
+            {"Haze", EnvironmentType.Cloudy},
+            {"Dust", EnvironmentType.Wind},
+            {"Sand", EnvironmentType.Wind},
+            {"Squall", EnvironmentType.ThunderRain},
+            {"Tornado", EnvironmentType.ThunderRain},
+        };
+
+        internal static bool TryGetEnvironment(string weatherText, out EnvironmentType env)
+        {
+            env = default(EnvironmentType);
+            if (string.IsNullOrEmpty(weatherText)) return false;
+            return WeatherToEnvironment.TryGetValue(weatherText.Trim(), out env);
+        }
+
+        public static WeatherInfo CachedWeather => _cachedWeather;
+
+        public static IEnumerator FetchWeather(string apiKey, string location, Action<WeatherInfo> onComplete)
+        {
+            // 检查缓存
+            if (_cachedWeather != null && DateTime.Now - _lastFetchTime < CacheExpiry)
+            {
+                ChillEnvPlugin.Log?.LogInfo($"使用缓存天气: {_cachedWeather}");
+                onComplete?.Invoke(_cachedWeather);
                 yield break;
             }
 
-            string url = $"https://api.seniverse.com/v3/weather/now.json?key={apiKey}&location={UnityWebRequest.EscapeURL(city)}&language=zh-Hans&unit=c";
-            _log.LogInfo($"[天气请求] URL: {url}");
+            string url = $"https://api.seniverse.com/v3/weather/now.json?key={apiKey}&location={UnityWebRequest.EscapeURL(location)}&language=zh-Hans&unit=c";
+
+            ChillEnvPlugin.Log?.LogInfo($"请求天气: {location}");
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
-                _log.LogInfo("[天气请求] 发送请求...");
+                request.timeout = 10;
                 yield return request.SendWebRequest();
-
-                _log.LogInfo($"[天气请求] 响应状态: {request.result}");
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    _log.LogError($"[天气请求] 失败: {request.error}");
-                    _log.LogError($"[天气请求] HTTP状态码: {request.responseCode}");
+                    ChillEnvPlugin.Log?.LogWarning($"天气API请求失败: {request.error}");
+                    onComplete?.Invoke(null);
                     yield break;
                 }
 
                 string json = request.downloadHandler.text;
-                _log.LogInfo($"[天气请求] 返回JSON: {json}");
+                ChillEnvPlugin.Log?.LogInfo($"天气API返回: {json}");
 
-                var weatherData = ParseWeatherJson(json);
-                if (weatherData.HasValue)
+                try
                 {
-                    var data = weatherData.Value;
-                    _log.LogInfo($"[天气解析] 成功: {data.Text}, {data.Temperature}°C, Code={data.Code}");
-
-                    bool isDay = IsDaytime();
-                    _log.LogInfo($"[天气决策] 当前时间: {DateTime.Now:HH:mm}, 是否白天: {isDay}");
-
-                    ApplyWeather(data.Code, isDay);
+                    // 手动解析 JSON（因为 JsonUtility 对嵌套数组支持不好）
+                    var weather = ParseWeatherJson(json);
+                    
+                    if (weather != null)
+                    {
+                        _cachedWeather = weather;
+                        _lastFetchTime = DateTime.Now;
+                        
+                        ChillEnvPlugin.Log?.LogInfo($"🌤️ 天气解析成功: {weather}");
+                        onComplete?.Invoke(weather);
+                    }
+                    else
+                    {
+                        ChillEnvPlugin.Log?.LogWarning("天气数据解析失败");
+                        onComplete?.Invoke(null);
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    _log.LogError("[天气解析] 失败，无法解析JSON");
+                    ChillEnvPlugin.Log?.LogError($"解析天气数据异常: {ex.Message}");
+                    onComplete?.Invoke(null);
                 }
             }
         }
 
-        private struct WeatherData
-        {
-            public string Text;
-            public string Code;
-            public string Temperature;
-        }
-
-        private WeatherData? ParseWeatherJson(string json)
+        private static WeatherInfo ParseWeatherJson(string json)
         {
             try
             {
-                var textMatch = Regex.Match(json, "\"text\"\\s*:\\s*\"([^\"]+)\"");
-                var codeMatch = Regex.Match(json, "\"code\"\\s*:\\s*\"([^\"]+)\"");
-                var tempMatch = Regex.Match(json, "\"temperature\"\\s*:\\s*\"([^\"]+)\"");
+                // 查找 "now": 部分
+                int nowIndex = json.IndexOf("\"now\"");
+                if (nowIndex < 0) return null;
 
-                _log.LogInfo($"[JSON解析] text匹配: {textMatch.Success}, code匹配: {codeMatch.Success}, temp匹配: {tempMatch.Success}");
+                // 提取 code
+                int code = ExtractIntValue(json, "\"code\":\"", "\"");
+                
+                // 提取 temperature  
+                int temp = ExtractIntValue(json, "\"temperature\":\"", "\"");
+                
+                // 提取 text
+                string text = ExtractStringValue(json, "\"text\":\"", "\"");
 
-                if (textMatch.Success && codeMatch.Success && tempMatch.Success)
+                if (string.IsNullOrEmpty(text)) return null;
+
+                return new WeatherInfo
                 {
-                    return new WeatherData
+                    Code = code,
+                    Text = text,
+                    Temperature = temp,
+                    Condition = MapCodeToCondition(code),
+                    UpdateTime = DateTime.Now
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static int ExtractIntValue(string json, string prefix, string suffix)
+        {
+            int start = json.IndexOf(prefix);
+            if (start < 0) return 0;
+            start += prefix.Length;
+            
+            int end = json.IndexOf(suffix, start);
+            if (end < 0) return 0;
+            
+            string value = json.Substring(start, end - start);
+            int result;
+            int.TryParse(value, out result);
+            return result;
+        }
+
+        private static string ExtractStringValue(string json, string prefix, string suffix)
+        {
+            int start = json.IndexOf(prefix);
+            if (start < 0) return null;
+            start += prefix.Length;
+            
+            int end = json.IndexOf(suffix, start);
+            if (end < 0) return null;
+            
+            return json.Substring(start, end - start);
+        }
+
+        private static WeatherCondition MapCodeToCondition(int code)
+        {
+            // 晴天: 0-3
+            if (code >= 0 && code <= 3)
+                return WeatherCondition.Clear;
+
+            // 多云/阴天: 4-9
+            if (code >= 4 && code <= 9)
+                return WeatherCondition.Cloudy;
+
+            // 雨天: 10-20 (阵雨、雷阵雨、各种雨、冻雨、雨夹雪)
+            if (code >= 10 && code <= 20)
+                return WeatherCondition.Rainy;
+
+            // 雪天: 21-25
+            if (code >= 21 && code <= 25)
+                return WeatherCondition.Snowy;
+
+            // 浮尘/扬沙/沙尘暴: 26-29 -> 当作阴天
+            if (code >= 26 && code <= 29)
+                return WeatherCondition.Cloudy;
+
+            // 雾/霾: 30-31
+            if (code >= 30 && code <= 31)
+                return WeatherCondition.Foggy;
+
+            // 风: 32-36 -> 当作阴天
+            if (code >= 32 && code <= 36)
+                return WeatherCondition.Cloudy;
+
+            // 冷/热: 37-38 -> 晴天
+            if (code >= 37 && code <= 38)
+                return WeatherCondition.Clear;
+
+            return WeatherCondition.Unknown;
+        }
+    }
+
+    public class AutoEnvRunner : MonoBehaviour
+    {
+        private float _nextTickTime;
+        private EnvironmentType? _lastAppliedEnv;
+        private bool _isFetching;
+
+        private static readonly EnvironmentType[] MainEnvironments = new[]
+        {
+            EnvironmentType.Day,
+            EnvironmentType.Sunset,
+            EnvironmentType.Night,
+            EnvironmentType.Cloudy,
+            EnvironmentType.LightRain,
+            EnvironmentType.HeavyRain,
+            EnvironmentType.ThunderRain
+        };
+
+        private void Start()
+        {
+            _nextTickTime = Time.time + 15f;
+            ChillEnvPlugin.Log?.LogInfo("Runner 启动，15秒后首次同步");
+
+            // 显示配置状态
+            bool weatherEnabled = ChillEnvPlugin.Cfg_EnableWeatherSync.Value;
+            string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
+            string location = ChillEnvPlugin.Cfg_Location.Value;
+
+            if (weatherEnabled && !string.IsNullOrEmpty(apiKey))
+            {
+                ChillEnvPlugin.Log?.LogInfo($"天气同步已启用，城市: {location}");
+            }
+            else
+            {
+                ChillEnvPlugin.Log?.LogInfo("天气同步未启用，仅按时间同步");
+            }
+        }
+
+        private void Update()
+        {
+            if (!ChillEnvPlugin.Initialized || EnvRegistry.Count == 0)
+                return;
+
+            // F9: 手动同步
+            if (Input.GetKeyDown(KeyCode.F9))
+            {
+                ChillEnvPlugin.Log?.LogInfo("F9: 手动触发同步");
+                TriggerSync();
+            }
+
+            // F8: 显示状态
+            if (Input.GetKeyDown(KeyCode.F8))
+            {
+                ShowStatus();
+            }
+
+            // F7: 手动刷新天气
+            if (Input.GetKeyDown(KeyCode.F7))
+            {
+                ChillEnvPlugin.Log?.LogInfo("F7: 强制刷新天气");
+                ForceRefreshWeather();
+            }
+
+            // 定时同步
+            if (Time.time >= _nextTickTime)
+            {
+                int minutes = Mathf.Max(1, ChillEnvPlugin.Cfg_WeatherRefreshMinutes.Value);
+                _nextTickTime = Time.time + (minutes * 60f);
+                TriggerSync();
+            }
+        }
+
+        private void ShowStatus()
+        {
+            var now = DateTime.Now;
+            ChillEnvPlugin.Log?.LogInfo($"--- 状态 [{now:HH:mm:ss}] ---");
+            ChillEnvPlugin.Log?.LogInfo($"插件记录: {_lastAppliedEnv}");
+
+            var currentActive = GetCurrentActiveEnvironment();
+            ChillEnvPlugin.Log?.LogInfo($"游戏实际: {currentActive}");
+
+            var cached = WeatherService.CachedWeather;
+            if (cached != null)
+            {
+                ChillEnvPlugin.Log?.LogInfo($"缓存天气: {cached}");
+            }
+            else
+            {
+                ChillEnvPlugin.Log?.LogInfo("缓存天气: 无");
+            }
+
+            bool weatherEnabled = ChillEnvPlugin.Cfg_EnableWeatherSync.Value;
+            ChillEnvPlugin.Log?.LogInfo($"天气同步: {(weatherEnabled ? "已启用" : "未启用")}");
+        }
+
+        private void ForceRefreshWeather()
+        {
+            if (_isFetching) return;
+
+            string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
+            string location = ChillEnvPlugin.Cfg_Location.Value;
+
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                ChillEnvPlugin.Log?.LogWarning("API Key 未配置");
+                return;
+            }
+
+            _isFetching = true;
+            StartCoroutine(WeatherService.FetchWeather(apiKey, location, (weather) =>
+            {
+                _isFetching = false;
+                if (weather != null)
+                {
+                    ChillEnvPlugin.Log?.LogInfo($"天气刷新完成: {weather}");
+                    ApplyEnvironment(weather);
+                }
+            }));
+        }
+
+        private void TriggerSync()
+        {
+            bool weatherEnabled = ChillEnvPlugin.Cfg_EnableWeatherSync.Value;
+            string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
+
+            if (weatherEnabled && !string.IsNullOrEmpty(apiKey) && !_isFetching)
+            {
+                // 使用天气API同步
+                string location = ChillEnvPlugin.Cfg_Location.Value;
+                _isFetching = true;
+
+                StartCoroutine(WeatherService.FetchWeather(apiKey, location, (weather) =>
+                {
+                    _isFetching = false;
+                    if (weather != null)
                     {
-                        Text = textMatch.Groups[1].Value,
-                        Code = codeMatch.Groups[1].Value,
-                        Temperature = tempMatch.Groups[1].Value
-                    };
+                        ApplyEnvironment(weather);
+                    }
+                    else
+                    {
+                        // API失败，回退到时间同步
+                        ChillEnvPlugin.Log?.LogWarning("天气API失败，回退到时间同步");
+                        ApplyTimeBasedEnvironment();
+                    }
+                }));
+            }
+            else
+            {
+                // 仅按时间同步
+                ApplyTimeBasedEnvironment();
+            }
+        }
+
+        private EnvironmentType? GetCurrentActiveEnvironment()
+        {
+            try
+            {
+                var windowViewDic = SaveDataManager.Instance.WindowViewDic;
+
+                foreach (var envType in MainEnvironments)
+                {
+                    WindowViewType windowType;
+                    if (Enum.TryParse(envType.ToString(), out windowType))
+                    {
+                        if (windowViewDic.ContainsKey(windowType) && windowViewDic[windowType].IsActive)
+                        {
+                            return envType;
+                        }
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _log.LogError($"[JSON解析] 异常: {ex.Message}");
+                ChillEnvPlugin.Log?.LogWarning($"获取当前环境失败: {ex.Message}");
             }
+
             return null;
         }
 
-        private bool IsDaytime()
+        private void ApplyEnvironment(WeatherInfo weather)
         {
-            int hour = DateTime.Now.Hour;
-            return hour >= 6 && hour < 18;
-        }
+            DateTime now = DateTime.Now;
+            TimeSpan currentTime = now.TimeOfDay;
 
-        // ========== 天气映射 ==========
-        private struct WeatherMapping
-        {
-            public WindowViewType BaseEnvironment;
-            public WindowViewType? PrecipitationType;
-            public WindowViewType? SpecialEffect;
-            public bool ClearAllPrecipitation;
-        }
+            TimeSpan sunrise, sunset;
+            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunriseTime.Value, out sunrise))
+                sunrise = new TimeSpan(6, 30, 0);
+            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunsetTime.Value, out sunset))
+                sunset = new TimeSpan(18, 30, 0);
 
-        private WeatherMapping GetWeatherMapping(string weatherCode, bool isDay)
-        {
-            WindowViewType baseEnv = isDay ? WindowViewType.Day : WindowViewType.Night;
+            TimeSpan sunsetStart = sunset.Subtract(TimeSpan.FromHours(1));
+            TimeSpan sunsetEnd = sunset.Add(TimeSpan.FromMinutes(30));
 
-            switch (weatherCode)
+            EnvironmentType targetEnv;
+
+            // 优先使用文本映射
+            EnvironmentType mapped;
+            if (WeatherService.TryGetEnvironment(weather.Text, out mapped))
             {
-                case "0":
-                case "1":
-                case "2":
-                case "3":
-                    return new WeatherMapping
+                if (mapped == EnvironmentType.Day)
+                {
+                    // Clear: 根据时间决定实际环境
+                    if (currentTime >= sunrise && currentTime < sunsetStart)
                     {
-                        BaseEnvironment = baseEnv,
-                        PrecipitationType = null,
-                        SpecialEffect = null,
-                        ClearAllPrecipitation = true
-                    };
-
-                case "4":
-                case "5":
-                case "6":
-                case "7":
-                case "8":
-                case "9":
-                    return new WeatherMapping
+                        targetEnv = EnvironmentType.Day;
+                    }
+                    else if (currentTime >= sunsetStart && currentTime < sunsetEnd)
                     {
-                        BaseEnvironment = WindowViewType.Cloudy,
-                        PrecipitationType = null,
-                        SpecialEffect = null,
-                        ClearAllPrecipitation = true
-                    };
-
-                case "10":
-                case "13":
-                case "14":
-                case "19":
-                    return new WeatherMapping
+                        targetEnv = EnvironmentType.Sunset;
+                    }
+                    else
                     {
-                        BaseEnvironment = WindowViewType.Cloudy,
-                        PrecipitationType = WindowViewType.LightRain,
-                        SpecialEffect = null,
-                        ClearAllPrecipitation = false
-                    };
-
-                case "15":
-                case "16":
-                case "17":
-                case "18":
-                    return new WeatherMapping
-                    {
-                        BaseEnvironment = WindowViewType.Cloudy,
-                        PrecipitationType = WindowViewType.HeavyRain,
-                        SpecialEffect = null,
-                        ClearAllPrecipitation = false
-                    };
-
-                case "11":
-                case "12":
-                    return new WeatherMapping
-                    {
-                        BaseEnvironment = WindowViewType.Cloudy,
-                        PrecipitationType = WindowViewType.ThunderRain,
-                        SpecialEffect = null,
-                        ClearAllPrecipitation = false
-                    };
-
-                case "20":
-                case "21":
-                case "22":
-                case "23":
-                case "24":
-                case "25":
-                    return new WeatherMapping
-                    {
-                        BaseEnvironment = WindowViewType.Cloudy,
-                        PrecipitationType = null,
-                        SpecialEffect = WindowViewType.Snow,
-                        ClearAllPrecipitation = true
-                    };
-
-                case "30":
-                case "31":
-                case "32":
-                case "33":
-                case "34":
-                case "35":
-                    return new WeatherMapping
-                    {
-                        BaseEnvironment = WindowViewType.Cloudy,
-                        PrecipitationType = null,
-                        SpecialEffect = null,
-                        ClearAllPrecipitation = true
-                    };
-
-                default:
-                    _log.LogWarning($"[天气映射] 未知代码: {weatherCode}, 使用默认");
-                    return new WeatherMapping
-                    {
-                        BaseEnvironment = baseEnv,
-                        PrecipitationType = null,
-                        SpecialEffect = null,
-                        ClearAllPrecipitation = true
-                    };
+                        targetEnv = EnvironmentType.Night;
+                    }
+                }
+                else
+                {
+                    targetEnv = mapped;
+                }
             }
+            else
+            {
+                // 映射不到时，按旧的条件做保底
+                switch (weather.Condition)
+                {
+                    case WeatherCondition.Snowy:
+                        targetEnv = EnvironmentType.Snow;
+                        break;
+                    case WeatherCondition.Cloudy:
+                    case WeatherCondition.Foggy:
+                        targetEnv = EnvironmentType.Cloudy;
+                        break;
+                    case WeatherCondition.Rainy:
+                        targetEnv = EnvironmentType.HeavyRain;
+                        break;
+                    case WeatherCondition.Clear:
+                    default:
+                        if (currentTime >= sunrise && currentTime < sunsetStart)
+                        {
+                            targetEnv = EnvironmentType.Day;
+                        }
+                        else if (currentTime >= sunsetStart && currentTime < sunsetEnd)
+                        {
+                            targetEnv = EnvironmentType.Sunset;
+                        }
+                        else
+                        {
+                            targetEnv = EnvironmentType.Night;
+                        }
+                        break;
+                }
+            }
+
+            ChillEnvPlugin.Log?.LogInfo($"[天气决策] {weather.Text} + {now:HH:mm} -> {targetEnv}");
+            SwitchToEnvironment(targetEnv);
         }
 
-        // ========== 应用天气 ==========
-        private void ApplyWeather(string weatherCode, bool isDay)
+        private void ApplyTimeBasedEnvironment()
         {
-            if (_windowViewService == null)
+            DateTime now = DateTime.Now;
+            TimeSpan currentTime = now.TimeOfDay;
+
+            TimeSpan sunrise, sunset;
+            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunriseTime.Value, out sunrise))
+                sunrise = new TimeSpan(6, 30, 0);
+            if (!TimeSpan.TryParse(ChillEnvPlugin.Cfg_SunsetTime.Value, out sunset))
+                sunset = new TimeSpan(18, 30, 0);
+
+            TimeSpan sunsetStart = sunset.Subtract(TimeSpan.FromHours(1));
+            TimeSpan sunsetEnd = sunset.Add(TimeSpan.FromMinutes(30));
+
+            EnvironmentType targetEnv;
+
+            if (currentTime >= sunrise && currentTime < sunsetStart)
             {
-                _log.LogError("[应用天气] WindowViewService 为 null");
+                targetEnv = EnvironmentType.Day;
+            }
+            else if (currentTime >= sunsetStart && currentTime < sunsetEnd)
+            {
+                targetEnv = EnvironmentType.Sunset;
+            }
+            else
+            {
+                targetEnv = EnvironmentType.Night;
+            }
+
+            ChillEnvPlugin.Log?.LogInfo($"[时间决策] {now:HH:mm} -> {targetEnv}");
+            SwitchToEnvironment(targetEnv);
+        }
+
+        private void SwitchToEnvironment(EnvironmentType targetEnv)
+        {
+            var currentActive = GetCurrentActiveEnvironment();
+
+            if (currentActive.HasValue && currentActive.Value == targetEnv)
+            {
+                ChillEnvPlugin.Log?.LogInfo("目标环境已激活，跳过");
+                _lastAppliedEnv = targetEnv;
                 return;
             }
 
-            var mapping = GetWeatherMapping(weatherCode, isDay);
-
-            _log.LogInfo($"[应用天气] 基础={mapping.BaseEnvironment}, " +
-                        $"降水={mapping.PrecipitationType?.ToString() ?? "无"}, " +
-                        $"特效={mapping.SpecialEffect?.ToString() ?? "无"}");
-
-            try
+            // 关闭当前环境
+            if (currentActive.HasValue && EnvRegistry.TryGet(currentActive.Value, out var oldCtrl))
             {
-                // 先打印当前状态
-                _log.LogInfo("[应用天气] 当前环境状态:");
-                foreach (var env in BaseTimeWeather)
+                try
                 {
-                    bool active = _windowViewService.IsActiveWindow(env);
-                    _log.LogInfo($"  - {env}: {(active ? "激活" : "关闭")}");
+                    ChillEnvPlugin.Log?.LogInfo($"关闭 [{currentActive.Value}]");
+                    oldCtrl.ChangeWindowView(ChangeType.Deactivate);
                 }
-
-                ApplyBaseEnvironment(mapping.BaseEnvironment);
-                ApplyPrecipitation(mapping.PrecipitationType, mapping.ClearAllPrecipitation);
-
-                if (mapping.SpecialEffect.HasValue)
+                catch (Exception ex)
                 {
-                    ApplySpecialEffect(mapping.SpecialEffect.Value);
+                    ChillEnvPlugin.Log?.LogWarning($"关闭失败: {ex.Message}");
                 }
-
-                SaveEnvironmentState(mapping);
-
-                _log.LogInfo("[应用天气] ✓ 完成");
             }
-            catch (Exception ex)
+
+            // 激活目标环境
+            if (EnvRegistry.TryGet(targetEnv, out var ctrl))
             {
-                _log.LogError($"[应用天气] 异常: {ex.Message}\n{ex.StackTrace}");
+                try
+                {
+                    ChillEnvPlugin.Log?.LogInfo($"激活 [{targetEnv}]");
+                    ctrl.ChangeWindowView(ChangeType.Activate);
+                    _lastAppliedEnv = targetEnv;
+                    ChillEnvPlugin.Log?.LogInfo("✅ 切换成功");
+                }
+                catch (Exception ex)
+                {
+                    ChillEnvPlugin.Log?.LogError($"激活失败: {ex}");
+                }
+            }
+            else
+            {
+                ChillEnvPlugin.Log?.LogWarning($"找不到 [{targetEnv}] 控制器");
+            }
+        }
+    }
+
+    internal static class EnvRegistry
+    {
+        private static readonly Dictionary<EnvironmentType, EnviromentController> _map = new Dictionary<EnvironmentType, EnviromentController>();
+        internal static int Count => _map.Count;
+
+        internal static void Register(EnvironmentType type, EnviromentController ctrl)
+        {
+            if (ctrl != null && !_map.ContainsKey(type))
+            {
+                _map[type] = ctrl;
             }
         }
 
-        private void ApplyBaseEnvironment(WindowViewType target)
+        internal static bool TryGet(EnvironmentType type, out EnviromentController ctrl)
         {
-            WindowViewType? currentBase = null;
-            foreach (var env in BaseTimeWeather)
-            {
-                if (_windowViewService.IsActiveWindow(env))
-                {
-                    currentBase = env;
-                    break;
-                }
-            }
-
-            if (currentBase == target)
-            {
-                _log.LogInfo($"[基础环境] {target} 已激活，跳过");
-                return;
-            }
-
-            _log.LogInfo($"[基础环境] {currentBase?.ToString() ?? "无"} -> {target}");
-            _windowViewService.ChangeWeatherAndTime(target);
+            return _map.TryGetValue(type, out ctrl);
         }
+    }
 
-        private void ApplyPrecipitation(WindowViewType? target, bool clearAll)
+    [HarmonyPatch(typeof(UnlockItemService), "Setup")]
+    internal static class UnlockServicePatch
+    {
+        static void Postfix(UnlockItemService __instance)
         {
-            if (clearAll)
-            {
-                foreach (var precip in PrecipitationWeather)
-                {
-                    if (_windowViewService.IsActiveWindow(precip))
-                    {
-                        _log.LogInfo($"[降水] 关闭: {precip}");
-                        _windowViewService.DeactivateWindow(precip);
-                    }
-                }
-            }
-            else if (target.HasValue)
-            {
-                foreach (var precip in PrecipitationWeather)
-                {
-                    bool isActive = _windowViewService.IsActiveWindow(precip);
-                    bool shouldBeActive = (precip == target.Value);
-
-                    if (shouldBeActive && !isActive)
-                    {
-                        _log.LogInfo($"[降水] 激活: {precip}");
-                        _windowViewService.ActivateWindow(precip);
-                    }
-                    else if (!shouldBeActive && isActive)
-                    {
-                        _log.LogInfo($"[降水] 关闭: {precip}");
-                        _windowViewService.DeactivateWindow(precip);
-                    }
-                }
-            }
+            ChillEnvPlugin.UnlockItemServiceInstance = __instance;
+            ChillEnvPlugin.TryInitializeOnce(__instance);
         }
+    }
 
-        private void ApplySpecialEffect(WindowViewType effect)
+    [HarmonyPatch(typeof(EnviromentController), "Setup")]
+    internal static class EnvControllerPatch
+    {
+        static void Postfix(EnviromentController __instance)
         {
-            if (!_windowViewService.IsActiveWindow(effect))
-            {
-                _log.LogInfo($"[特效] 激活: {effect}");
-                _windowViewService.ActivateWindow(effect);
-            }
-        }
-
-        private void SaveEnvironmentState(WeatherMapping mapping)
-        {
-            try
-            {
-                _log.LogInfo("[存档] 尝试保存环境状态...");
-
-                var saveData = SaveDataManager.Instance;
-                if (saveData == null)
-                {
-                    _log.LogWarning("[存档] SaveDataManager.Instance 为 null");
-                    return;
-                }
-
-                if (saveData.WindowViewDic == null)
-                {
-                    _log.LogWarning("[存档] WindowViewDic 为 null");
-                    return;
-                }
-
-                _log.LogInfo($"[存档] WindowViewDic 数量: {saveData.WindowViewDic.Count}");
-
-                foreach (var env in BaseTimeWeather)
-                {
-                    if (saveData.WindowViewDic.ContainsKey(env))
-                    {
-                        saveData.WindowViewDic[env].IsActive = (env == mapping.BaseEnvironment);
-                    }
-                }
-
-                foreach (var precip in PrecipitationWeather)
-                {
-                    if (saveData.WindowViewDic.ContainsKey(precip))
-                    {
-                        bool shouldBeActive = mapping.PrecipitationType.HasValue &&
-                                             mapping.PrecipitationType.Value == precip;
-                        saveData.WindowViewDic[precip].IsActive = shouldBeActive;
-                    }
-                }
-
-                if (mapping.SpecialEffect.HasValue &&
-                    saveData.WindowViewDic.ContainsKey(mapping.SpecialEffect.Value))
-                {
-                    saveData.WindowViewDic[mapping.SpecialEffect.Value].IsActive = true;
-                }
-
-                saveData.SaveEnviroment();
-                _log.LogInfo("[存档] ✓ 保存成功");
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning($"[存档] 异常: {ex.Message}");
-            }
+            EnvRegistry.Register(__instance.EnvironmentType, __instance);
         }
     }
 }
