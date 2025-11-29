@@ -12,7 +12,7 @@ using Bulbul;
 
 namespace ChillWithYou.EnvSync
 {
-    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "3.5.0")]
+    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "3.6.0")]
     public class ChillEnvPlugin : BaseUnityPlugin
     {
         internal static ChillEnvPlugin Instance;
@@ -32,6 +32,10 @@ namespace ChillWithYou.EnvSync
         internal static ConfigEntry<string> Cfg_Location;
         internal static ConfigEntry<bool> Cfg_EnableWeatherSync;
 
+        // 【新增】解锁控制开关
+        internal static ConfigEntry<bool> Cfg_UnlockEnvironments;
+        internal static ConfigEntry<bool> Cfg_UnlockDecorations;
+
         private static AutoEnvRunner _runner;
         private static GameObject _runnerGO;
 
@@ -40,7 +44,7 @@ namespace ChillWithYou.EnvSync
             Instance = this;
             Log = Logger;
 
-            Log.LogInfo("【3.5.0】启动 - 双按钮逻辑适配 (模拟点击MainIcon)");
+            Log.LogInfo("【3.6.0】启动 - 添加解锁内容配置开关");
 
             try
             {
@@ -78,17 +82,37 @@ namespace ChillWithYou.EnvSync
             Cfg_EnableWeatherSync = Config.Bind("WeatherAPI", "EnableWeatherSync", false, "是否启用天气API同步（需要填写API Key）");
             Cfg_SeniverseKey = Config.Bind("WeatherAPI", "SeniverseKey", "", "心知天气 API Key");
             Cfg_Location = Config.Bind("WeatherAPI", "Location", "beijing", "城市名称（拼音或中文，如 beijing、上海、ip 表示自动定位）");
+
+            // 【新增】解锁配置，默认值为 true (保持老用户体验一致)
+            Cfg_UnlockEnvironments = Config.Bind("Unlock", "UnlockAllEnvironments", true, "是否自动解锁所有环境场景 (默认开启，设为false则保持游戏原状)");
+            Cfg_UnlockDecorations = Config.Bind("Unlock", "UnlockAllDecorations", true, "是否自动解锁所有装饰品 (默认开启，设为false则保持游戏原状)");
         }
 
         internal static void TryInitializeOnce(UnlockItemService svc)
         {
             if (Initialized || svc == null) return;
 
-            ForceUnlockAllEnvironments(svc);
-            ForceUnlockAllDecorations(svc);
+            // 【修改】根据配置决定是否执行解锁逻辑
+            if (Cfg_UnlockEnvironments.Value)
+            {
+                ForceUnlockAllEnvironments(svc);
+            }
+            else
+            {
+                Log?.LogInfo("配置设定为不自动解锁环境，跳过");
+            }
+
+            if (Cfg_UnlockDecorations.Value)
+            {
+                ForceUnlockAllDecorations(svc);
+            }
+            else
+            {
+                Log?.LogInfo("配置设定为不自动解锁装饰品，跳过");
+            }
 
             Initialized = true;
-            Log?.LogInfo("初始化完成，环境和装饰品已解锁");
+            Log?.LogInfo("初始化完成");
         }
 
         internal static void CallServiceChangeWeather(EnvironmentType envType)
@@ -117,7 +141,7 @@ namespace ChillWithYou.EnvSync
             }
         }
 
-        // 【新增】模拟点击 MainIcon (按钮A)
+        // 模拟点击 MainIcon (按钮A)
         internal static void SimulateClickMainIcon(EnviromentController ctrl)
         {
             if (ctrl == null) return;
