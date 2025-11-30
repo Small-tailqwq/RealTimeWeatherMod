@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
@@ -9,11 +10,11 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Networking;
 using Bulbul;
-using TMPro; // 【新增】引用 TextMeshPro 命名空间
+using TMPro;
 
 namespace ChillWithYou.EnvSync
 {
-    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "4.5.0")]
+    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "5.0.1")]
     public class ChillEnvPlugin : BaseUnityPlugin
     {
         internal static ChillEnvPlugin Instance;
@@ -23,7 +24,6 @@ namespace ChillWithYou.EnvSync
         internal static object WindowViewServiceInstance;
         internal static MethodInfo ChangeWeatherMethod;
 
-        // 【新增】用于存储即将在UI上显示的天气字符串
         internal static string UIWeatherString = "";
 
         internal static bool Initialized;
@@ -40,6 +40,7 @@ namespace ChillWithYou.EnvSync
 
         // UI 配置
         internal static ConfigEntry<bool> Cfg_ShowWeatherOnUI;
+        internal static ConfigEntry<bool> Cfg_EnableEasterEggs;
 
         // 调试配置
         internal static ConfigEntry<bool> Cfg_DebugMode;
@@ -49,13 +50,14 @@ namespace ChillWithYou.EnvSync
 
         private static AutoEnvRunner _runner;
         private static GameObject _runnerGO;
+        private static SceneryAutomationSystem _scenerySystem;
 
         private void Awake()
         {
             Instance = this;
             Log = Logger;
 
-            Log.LogInfo("【4.5.0】启动 - UI显示集成 (日期栏显示天气)");
+            Log.LogInfo("【5.0.1】启动 - 枚举ID实装 (彩蛋系统就绪)");
 
             try
             {
@@ -75,8 +77,12 @@ namespace ChillWithYou.EnvSync
                 _runnerGO.hideFlags = HideFlags.HideAndDontSave;
                 UnityEngine.Object.DontDestroyOnLoad(_runnerGO);
                 _runnerGO.SetActive(true);
+                
                 _runner = _runnerGO.AddComponent<AutoEnvRunner>();
                 _runner.enabled = true;
+
+                _scenerySystem = _runnerGO.AddComponent<SceneryAutomationSystem>();
+                _scenerySystem.enabled = true;
             }
             catch (Exception ex)
             {
@@ -97,8 +103,8 @@ namespace ChillWithYou.EnvSync
             Cfg_UnlockEnvironments = Config.Bind("Unlock", "UnlockAllEnvironments", true, "是否自动解锁所有环境场景");
             Cfg_UnlockDecorations = Config.Bind("Unlock", "UnlockAllDecorations", true, "是否自动解锁所有装饰品");
 
-            // 【新增】UI 开关
             Cfg_ShowWeatherOnUI = Config.Bind("UI", "ShowWeatherOnDate", true, "是否在游戏日期栏显示实时天气和温度");
+            Cfg_EnableEasterEggs = Config.Bind("Automation", "EnableSeasonalEasterEggs", true, "启用季节性彩蛋与环境音效自动托管");
 
             Cfg_DebugMode = Config.Bind("Debug", "EnableDebugMode", false, "是否开启调试模式");
             Cfg_DebugCode = Config.Bind("Debug", "SimulatedCode", 1, "模拟天气代码");
@@ -151,7 +157,9 @@ namespace ChillWithYou.EnvSync
                 MethodInfo clickMethod = ctrl.GetType().GetMethod("OnClickButtonMainIcon", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (clickMethod != null)
                 {
+                    UserInteractionPatch.IsSimulatingClick = true;
                     clickMethod.Invoke(ctrl, null);
+                    UserInteractionPatch.IsSimulatingClick = false;
                 }
             }
             catch (Exception ex)
@@ -211,6 +219,229 @@ namespace ChillWithYou.EnvSync
                 Log?.LogInfo($"✅ 已解锁 {count} 个装饰品");
             }
             catch { }
+        }
+    }
+
+    // ====================================================================================
+    // 环境与彩蛋自动托管系统
+    // ====================================================================================
+    public class SceneryAutomationSystem : MonoBehaviour
+    {
+        private HashSet<EnvironmentType> _autoEnabledMods = new HashSet<EnvironmentType>();
+        public static HashSet<EnvironmentType> UserInteractedMods = new HashSet<EnvironmentType>();
+
+        private class SceneryRule
+        {
+            public EnvironmentType EnvType;
+            public Func<bool> Condition;
+            public string Name;
+        }
+
+        private List<SceneryRule> _rules = new List<SceneryRule>();
+        private float _checkTimer = 0f;
+        private const float CheckInterval = 5f;
+
+        private const EnvironmentType Env_Fireworks = EnvironmentType.Fireworks;
+        private const EnvironmentType Env_Cooking = EnvironmentType.CookSimmer;
+        private const EnvironmentType Env_AC = EnvironmentType.RoomNoise;
+        private const EnvironmentType Env_Sakura = EnvironmentType.Sakura;
+        private const EnvironmentType Env_Cicada = EnvironmentType.Chicada;
+        private const EnvironmentType Env_DeepSea = EnvironmentType.DeepSea;
+
+        private void Start()
+        {
+            InitializeRules();
+        }
+
+        private void InitializeRules()
+        {
+            // 1. 烟花 (Fireworks): 新年/春节 + 夜晚
+            _rules.Add(new SceneryRule
+            {
+                Name = "Fireworks",
+                EnvType = Env_Fireworks,
+                Condition = () =>
+                {
+                    DateTime now = DateTime.Now;
+                    bool isNight = IsNight();
+                    bool isNewYear = (now.Month == 1 && now.Day == 1);
+                    bool isSpringFestival = (now.Month == 1 || now.Month == 2);
+                    return isNight && (isNewYear || isSpringFestival);
+                }
+            });
+
+            // 2. 做饭音效 (CookSimmer): 饭点
+            _rules.Add(new SceneryRule
+            {
+                Name = "CookingAudio",
+                EnvType = Env_Cooking,
+                Condition = () =>
+                {
+                    int h = DateTime.Now.Hour;
+                    int m = DateTime.Now.Minute;
+                    double time = h + m / 60.0;
+                    return (time >= 11.5 && time <= 12.5) || (time >= 17.5 && time <= 18.5);
+                }
+            });
+
+            // 3. 空调音效 (RoomNoise): 太热或太冷
+            _rules.Add(new SceneryRule
+            {
+                Name = "AC_Audio",
+                EnvType = Env_AC,
+                Condition = () =>
+                {
+                    var w = WeatherService.CachedWeather;
+                    if (w == null) return false;
+                    return w.Temperature > 30 || w.Temperature < 5;
+                }
+            });
+
+            // 4. 樱花 (Sakura): 春天 + 白天 + 好天气
+            _rules.Add(new SceneryRule
+            {
+                Name = "Sakura",
+                EnvType = Env_Sakura,
+                Condition = () =>
+                {
+                    return GetSeason() == Season.Spring && IsDay() && IsGoodWeather();
+                }
+            });
+
+            // 5. 蝉鸣 (Chicada): 夏天 + 白天 + 好天气
+            _rules.Add(new SceneryRule
+            {
+                Name = "Cicadas",
+                EnvType = Env_Cicada,
+                Condition = () =>
+                {
+                    return GetSeason() == Season.Summer && IsDay() && IsGoodWeather();
+                }
+            });
+        }
+
+        private void Update()
+        {
+            if (!ChillEnvPlugin.Cfg_EnableEasterEggs.Value) return;
+            if (!ChillEnvPlugin.Initialized) return;
+
+            _checkTimer += Time.deltaTime;
+            if (_checkTimer >= CheckInterval)
+            {
+                _checkTimer = 0f;
+                RunAutomationLogic();
+            }
+        }
+
+        private void RunAutomationLogic()
+        {
+            // 深海优先
+            if (IsEnvActive(Env_DeepSea))
+            {
+                CleanupAllAutoMods();
+                return;
+            }
+
+            // Step 1: Cleanup
+            List<EnvironmentType> toRemove = new List<EnvironmentType>();
+            foreach (var envType in _autoEnabledMods)
+            {
+                if (UserInteractedMods.Contains(envType))
+                {
+                    toRemove.Add(envType);
+                    continue;
+                }
+
+                var rule = _rules.Find(r => r.EnvType == envType);
+                if (rule != null)
+                {
+                    if (!rule.Condition())
+                    {
+                        DisableMod(envType);
+                        toRemove.Add(envType);
+                        ChillEnvPlugin.Log?.LogInfo($"[自动托管] 条件失效，关闭: {rule.Name}");
+                    }
+                }
+            }
+            foreach (var rm in toRemove) _autoEnabledMods.Remove(rm);
+
+            // Step 2: Trigger
+            foreach (var rule in _rules)
+            {
+                if (UserInteractedMods.Contains(rule.EnvType)) continue;
+                if (_autoEnabledMods.Contains(rule.EnvType)) continue;
+                if (IsEnvActive(rule.EnvType)) continue;
+
+                if (rule.Condition())
+                {
+                    EnableMod(rule.EnvType);
+                    _autoEnabledMods.Add(rule.EnvType);
+                    ChillEnvPlugin.Log?.LogInfo($"[自动托管] 条件满足，开启: {rule.Name}");
+                }
+            }
+        }
+
+        private void EnableMod(EnvironmentType env)
+        {
+            if (EnvRegistry.TryGet(env, out var ctrl))
+            {
+                if (!IsEnvActive(env)) ChillEnvPlugin.SimulateClickMainIcon(ctrl);
+            }
+        }
+
+        private void DisableMod(EnvironmentType env)
+        {
+            if (EnvRegistry.TryGet(env, out var ctrl))
+            {
+                if (IsEnvActive(env)) ChillEnvPlugin.SimulateClickMainIcon(ctrl);
+            }
+        }
+
+        private void CleanupAllAutoMods()
+        {
+            foreach (var env in _autoEnabledMods) DisableMod(env);
+            _autoEnabledMods.Clear();
+        }
+
+        private bool IsEnvActive(EnvironmentType env)
+        {
+            try
+            {
+                var dict = SaveDataManager.Instance.WindowViewDic;
+                var winType = (WindowViewType)Enum.Parse(typeof(WindowViewType), env.ToString());
+                if (dict.ContainsKey(winType)) return dict[winType].IsActive;
+            }
+            catch { }
+            return false;
+        }
+
+        private enum Season { Spring, Summer, Autumn, Winter }
+        private Season GetSeason()
+        {
+            int month = DateTime.Now.Month;
+            if (month >= 3 && month <= 5) return Season.Spring;
+            if (month >= 6 && month <= 8) return Season.Summer;
+            if (month >= 9 && month <= 11) return Season.Autumn;
+            return Season.Winter;
+        }
+
+        private bool IsDay()
+        {
+            int h = DateTime.Now.Hour;
+            return h >= 6 && h < 18;
+        }
+
+        private bool IsNight()
+        {
+            int h = DateTime.Now.Hour;
+            return h >= 19 || h < 5;
+        }
+
+        private bool IsGoodWeather()
+        {
+            var w = WeatherService.CachedWeather;
+            if (w == null) return true;
+            return w.Code >= 0 && w.Code <= 9;
         }
     }
 
@@ -534,8 +765,6 @@ namespace ChillWithYou.EnvSync
             }
         }
 
-        // --- 逻辑 Helper 方法 ---
-
         private bool IsBadWeather(int code)
         {
             if (code == 10 || code == 13 || code == 21 || code == 22) return false;
@@ -569,8 +798,6 @@ namespace ChillWithYou.EnvSync
             else if (currentTime >= sunsetStart && currentTime < sunsetEnd) return EnvironmentType.Sunset;
             else return EnvironmentType.Night;
         }
-
-        // --- 执行逻辑 ---
 
         private void ApplyBaseEnvironment(EnvironmentType target, bool force)
         {
@@ -625,7 +852,6 @@ namespace ChillWithYou.EnvSync
                 ChillEnvPlugin.Log?.LogInfo($"[决策] 天气:{weather.Text}(Code:{weather.Code})");
             }
 
-            // 【新增】更新 UI 文本缓存
             ChillEnvPlugin.UIWeatherString = $"{weather.Text} {weather.Temperature}°C";
 
             EnvironmentType baseEnv = GetTimeBasedEnvironment();
@@ -646,7 +872,6 @@ namespace ChillWithYou.EnvSync
 
         private void ApplyTimeBasedEnvironment(bool force)
         {
-            // 无 API 时清空天气显示
             ChillEnvPlugin.UIWeatherString = "";
 
             EnvironmentType targetEnv = GetTimeBasedEnvironment();
@@ -720,30 +945,45 @@ namespace ChillWithYou.EnvSync
         }
     }
 
-    // 【新增】UI Hook - 拦截 CurrentDateAndTimeUI.UpdateDateAndTime
     [HarmonyPatch(typeof(CurrentDateAndTimeUI), "UpdateDateAndTime")]
     internal static class DateUIPatch
     {
         static void Postfix(CurrentDateAndTimeUI __instance)
         {
-            // 如果功能关闭或没有天气数据，直接返回
             if (!ChillEnvPlugin.Cfg_ShowWeatherOnUI.Value || string.IsNullOrEmpty(ChillEnvPlugin.UIWeatherString)) return;
 
             try
             {
-                // 反射获取私有的 _dateText 组件
                 var field = typeof(CurrentDateAndTimeUI).GetField("_dateText", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (field != null)
                 {
                     var textMesh = field.GetValue(__instance) as TextMeshProUGUI;
                     if (textMesh != null)
                     {
-                        // 在原有日期后面追加天气信息
                         textMesh.text += $" | {ChillEnvPlugin.UIWeatherString}";
                     }
                 }
             }
             catch { }
+        }
+    }
+
+    [HarmonyPatch(typeof(EnviromentController), "OnClickButtonMainIcon")]
+    internal static class UserInteractionPatch
+    {
+        public static bool IsSimulatingClick = false;
+
+        static void Prefix(EnviromentController __instance)
+        {
+            if (!IsSimulatingClick)
+            {
+                EnvironmentType type = __instance.EnvironmentType;
+                if (!SceneryAutomationSystem.UserInteractedMods.Contains(type))
+                {
+                    SceneryAutomationSystem.UserInteractedMods.Add(type);
+                    ChillEnvPlugin.Log?.LogInfo($"[用户交互] 用户接管了 {type}，停止自动托管。");
+                }
+            }
         }
     }
 }
