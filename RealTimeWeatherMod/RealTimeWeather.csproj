@@ -77,8 +77,14 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Class1.cs" />
+    <Compile Include="ChillEnvPlugin.cs" />
+    <Compile Include="Core\AutoEnvRunner.cs" />
+    <Compile Include="Core\SceneryAutomationSystem.cs" />
+    <Compile Include="Models\WeatherData.cs" />
+    <Compile Include="Patches\HarmonyPatches.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Services\WeatherService.cs" />
+    <Compile Include="Utils\EnvRegistry.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
