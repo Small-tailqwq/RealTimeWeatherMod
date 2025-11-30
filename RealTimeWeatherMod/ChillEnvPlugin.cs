@@ -9,7 +9,7 @@ using Bulbul;
 
 namespace ChillWithYou.EnvSync
 {
-    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "5.1.0")]
+    [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "5.1.1")]
     public class ChillEnvPlugin : BaseUnityPlugin
     {
         internal static ChillEnvPlugin Instance;
@@ -30,7 +30,12 @@ namespace ChillWithYou.EnvSync
         internal static ConfigEntry<bool> Cfg_EnableWeatherSync;
         internal static ConfigEntry<bool> Cfg_UnlockEnvironments;
         internal static ConfigEntry<bool> Cfg_UnlockDecorations;
+
+        // UI 配置
         internal static ConfigEntry<bool> Cfg_ShowWeatherOnUI;
+        // 【5.1.1 新增】是否启用详细时间段显示 (凌晨/清晨/上午...)
+        internal static ConfigEntry<bool> Cfg_DetailedTimeSegments;
+
         internal static ConfigEntry<bool> Cfg_EnableEasterEggs;
 
         // 调试配置
@@ -46,7 +51,7 @@ namespace ChillWithYou.EnvSync
             Instance = this;
             Log = Logger;
 
-            Log.LogInfo("【5.1.0】启动 - 代码重构版 (多文件结构)");
+            Log.LogInfo("【5.1.1】启动 - 详细时间段显示 (Patch Update)");
 
             try
             {
@@ -89,7 +94,11 @@ namespace ChillWithYou.EnvSync
 
             Cfg_UnlockEnvironments = Config.Bind("Unlock", "UnlockAllEnvironments", true, "自动解锁环境");
             Cfg_UnlockDecorations = Config.Bind("Unlock", "UnlockAllDecorations", true, "自动解锁装饰");
+
             Cfg_ShowWeatherOnUI = Config.Bind("UI", "ShowWeatherOnDate", true, "日期栏显示天气");
+            // 【新增配置】
+            Cfg_DetailedTimeSegments = Config.Bind("UI", "DetailedTimeSegments", true, "开启12小时制时，显示详细时段(凌晨/清晨/上午等)");
+
             Cfg_EnableEasterEggs = Config.Bind("Automation", "EnableSeasonalEasterEggs", true, "启用季节性彩蛋与环境音效自动托管");
 
             Cfg_DebugMode = Config.Bind("Debug", "EnableDebugMode", false, "调试模式");
@@ -131,9 +140,9 @@ namespace ChillWithYou.EnvSync
                 MethodInfo clickMethod = ctrl.GetType().GetMethod("OnClickButtonMainIcon", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (clickMethod != null)
                 {
-                    Patches.UserInteractionPatch.IsSimulatingClick = true; // 标记开始
+                    Patches.UserInteractionPatch.IsSimulatingClick = true;
                     clickMethod.Invoke(ctrl, null);
-                    Patches.UserInteractionPatch.IsSimulatingClick = false; // 标记结束
+                    Patches.UserInteractionPatch.IsSimulatingClick = false;
                 }
             }
             catch (Exception ex) { Log?.LogError($"模拟点击失败: {ex.Message}"); }

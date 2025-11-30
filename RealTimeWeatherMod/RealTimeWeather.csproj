@@ -40,6 +40,9 @@
     <Reference Include="BepInEx">
       <HintPath>E:\SteamLibrary\steamapps\common\Chill with You Lo-Fi Story\BepInEx\core\BepInEx.dll</HintPath>
     </Reference>
+    <Reference Include="R3">
+      <HintPath>E:\SteamLibrary\steamapps\common\Chill with You Lo-Fi Story\Chill With You_Data\Managed\R3.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
