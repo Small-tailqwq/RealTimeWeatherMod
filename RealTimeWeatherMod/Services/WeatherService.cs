@@ -177,10 +177,11 @@ namespace ChillWithYou.EnvSync.Services
 
         public static WeatherCondition MapCodeToCondition(int code)
         {
-            if (code >= 0 && code <= 3) return WeatherCondition.Clear;
-            if (code >= 4 && code <= 9) return WeatherCondition.Cloudy;
-            if (code >= 10 && code <= 20) return WeatherCondition.Rainy;
-            if (code >= 21 && code <= 25) return WeatherCondition.Snowy;
+            if (code >= 0 && code <= 3) return WeatherCondition.Clear;       // 晴
+            if (code >= 4 && code <= 9) return WeatherCondition.Cloudy;      // 阴/多云
+            if (code >= 10 && code <= 20) return WeatherCondition.Rainy;     // 雨
+            if (code >= 21 && code <= 25) return WeatherCondition.Snowy;     // 雪
+            if (code >= 26 && code <= 36) return WeatherCondition.Foggy;     // 雾/霾/沙尘暴
             return WeatherCondition.Unknown;
         }
     }
