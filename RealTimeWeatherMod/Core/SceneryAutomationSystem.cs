@@ -306,15 +306,21 @@ namespace ChillWithYou.EnvSync.Core
           if (_hotSpringTriggeredToday)
             return true; // 今天已触发，保持开启
           
-          // 下雪时概率大幅提升至30%
-          var w = WeatherService.CachedWeather;
-          bool isSnowing = (w != null && w.Code >= 13 && w.Code <= 17); // 雪的天气代码
-          double probability = isSnowing ? 0.30 : 0.05;
-          
-          if (_random.NextDouble() < probability)
+          // 今天还没抽过，进行一次抽奖
+          if (!_hotSpringRollDoneToday)
           {
-            _hotSpringTriggeredToday = true;
-            return true;
+            _hotSpringRollDoneToday = true;
+            
+            // 下雪时概率大幅提升至30%
+            var w = WeatherService.CachedWeather;
+            bool isSnowing = (w != null && w.Code >= 13 && w.Code <= 17); // 雪的天气代码
+            double probability = isSnowing ? 0.30 : 0.05;
+            
+            if (_random.NextDouble() < probability)
+            {
+              _hotSpringTriggeredToday = true;
+              return true;
+            }
           }
           
           return false;
