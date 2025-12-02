@@ -376,8 +376,6 @@ For detailed changelog, see [Git Commit History](https://github.com/Small-tailqw
 ## 🐛 Known Issues
 
 - First load may take about 15 seconds before the first environment sync occurs (this shouldn't count as an issue, right? ~~A gentleman never rushes, so I added some delay?~~)
-- Some weather may incorrectly trigger the management list system: `[User Interaction] User took over HeavyRain, stopping auto-management.`
-  - However, this error does not affect automatic weather switching logic.
 
 ## 🤝 Contribution
 
