@@ -78,6 +78,7 @@ namespace ChillWithYou.EnvSync
         // 挂载组件
         _runnerGO.AddComponent<Core.AutoEnvRunner>();
         _runnerGO.AddComponent<Core.SceneryAutomationSystem>();
+        _runnerGO.AddComponent<Patches.ModSettingsIntegration>();
       }
       catch (Exception ex)
       {
