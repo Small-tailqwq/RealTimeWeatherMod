@@ -14,12 +14,15 @@ namespace ChillWithYou.EnvSync.Core
         private EnvironmentType? _lastAppliedEnv;
         private bool _isFetching;
 
+        private static AutoEnvRunner _instance;
+
         private static readonly EnvironmentType[] BaseEnvironments = new[] { EnvironmentType.Day, EnvironmentType.Sunset, EnvironmentType.Night, EnvironmentType.Cloudy };
         private static readonly EnvironmentType[] SceneryWeathers = new[] { EnvironmentType.ThunderRain, EnvironmentType.HeavyRain, EnvironmentType.LightRain, EnvironmentType.Snow };
         private static readonly EnvironmentType[] MainEnvironments = new[] { EnvironmentType.Day, EnvironmentType.Sunset, EnvironmentType.Night, EnvironmentType.Cloudy, EnvironmentType.LightRain, EnvironmentType.HeavyRain, EnvironmentType.ThunderRain, EnvironmentType.Snow };
 
         private void Start() 
         { 
+            _instance = this;
             _nextWeatherCheckTime = Time.time + 10f; 
             _nextTimeCheckTime = Time.time + 10f; 
             ChillEnvPlugin.Log?.LogInfo("Runner 启动..."); 
@@ -101,6 +104,18 @@ namespace ChillWithYou.EnvSync.Core
         }
 
         private void ForceRefreshWeather() { _nextWeatherCheckTime = Time.time + (ChillEnvPlugin.Cfg_WeatherRefreshMinutes.Value * 60f); TriggerSync(true, false); }
+
+        /// <summary>
+        /// 公开方法：立即强制刷新天气（供外部调用）
+        /// </summary>
+        public static void TriggerWeatherRefresh()
+        {
+            if (_instance != null)
+            {
+                ChillEnvPlugin.Log?.LogInfo("🔄 外部触发天气刷新");
+                _instance.ForceRefreshWeather();
+            }
+        }
 
         private void TriggerSync(bool forceApi, bool forceApply)
         {

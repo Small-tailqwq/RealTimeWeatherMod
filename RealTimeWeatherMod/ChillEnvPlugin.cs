@@ -54,7 +54,7 @@ namespace ChillWithYou.EnvSync
       Instance = this;
       Log = Logger;
 
-      Log.LogInfo("【5.1.2】启动 - 天气、日出与日落版");
+      Log.LogWarning("【5.1.2】启动 - 老坛酸菜版");
 
       try
       {
