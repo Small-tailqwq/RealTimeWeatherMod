@@ -12,13 +12,19 @@ namespace ChillWithYou.EnvSync.Services
         private static WeatherInfo _cachedWeather;
         private static DateTime _lastFetchTime;
         private static readonly TimeSpan CacheExpiry = TimeSpan.FromMinutes(60);
+        private static string _lastLocation;
         public static WeatherInfo CachedWeather => _cachedWeather;
         private static readonly string _encryptedDefaultKey = "7Mr4YSR87bFvE4zDgj6NbuBKgz4EiPYEnRTQ0RIaeSU=";
         public static bool HasDefaultKey => !string.IsNullOrEmpty(_encryptedDefaultKey);
 
         public static IEnumerator FetchWeather(string apiKey, string location, bool force, Action<WeatherInfo> onComplete)
         {
-            if (!force && _cachedWeather != null && DateTime.Now - _lastFetchTime < CacheExpiry)
+            string normalizedLocation = location?.Trim() ?? "";
+
+            if (!force && 
+                _cachedWeather != null && 
+                DateTime.Now - _lastFetchTime < CacheExpiry &&
+                string.Equals(_lastLocation, normalizedLocation, StringComparison.OrdinalIgnoreCase))
             {
                 onComplete?.Invoke(_cachedWeather);
                 yield break;
@@ -59,6 +65,7 @@ namespace ChillWithYou.EnvSync.Services
                     {
                         _cachedWeather = weather;
                         _lastFetchTime = DateTime.Now;
+                        _lastLocation = normalizedLocation;
                         ChillEnvPlugin.Log?.LogInfo($"[API] 数据更新: {weather}");
                         onComplete?.Invoke(weather);
                     }
@@ -70,6 +77,16 @@ namespace ChillWithYou.EnvSync.Services
                 }
                 catch { onComplete?.Invoke(null); }
             }
+        }
+
+        /// <summary>
+        /// 主动清理缓存（如切换城市时）
+        /// </summary>
+        public static void InvalidateCache()
+        {
+            _cachedWeather = null;
+            _lastLocation = null;
+            _lastFetchTime = DateTime.MinValue;
         }
 
         private static WeatherInfo ParseWeatherJson(string json)

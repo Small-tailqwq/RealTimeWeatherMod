@@ -170,6 +170,7 @@ namespace ChillWithYou.EnvSync.Patches
                     {
                         ChillEnvPlugin.Cfg_Location.Value = val;
                         ChillEnvPlugin.Instance.Config.Save();
+                        Services.WeatherService.InvalidateCache(); // 切换城市时清空缓存，避免沿用旧城市天气
                         
                         // 防抖：取消之前的延迟任务
                         if (_locationDebounceCoroutine != null)
@@ -298,16 +299,16 @@ namespace ChillWithYou.EnvSync.Patches
         /// </summary>
         private IEnumerator RefreshWeatherAfterDelay(string location, float delay)
         {
-            yield return new WaitForSeconds(delay);
+            // 用真实时间的延迟,避免 Time.timeScale 影响导致等待过长
+            yield return new WaitForSecondsRealtime(delay);
             
-            ChillEnvPlugin.Log?.LogInfo($"🔄 [EnvSync] 城市已更新为 '{location}'，正在刷新天气数据...");
+            ChillEnvPlugin.Log?.LogInfo($"🔄 [EnvSync] 城市已更新为 '{location}',正在刷新天气与日出日落数据...");
             
-            // 重载配置并立即触发天气刷新
-            if (ChillEnvPlugin.Instance != null)
-            {
-                ChillEnvPlugin.Instance.Config.Reload();
-                Core.AutoEnvRunner.TriggerWeatherRefresh();
-            }
+            // 立即触发天气刷新 (配置值已在回调中更新,无需 Reload)
+            Core.AutoEnvRunner.TriggerWeatherRefresh();
+            
+            // 同时刷新日出日落数据 (地理位置变化会影响日出日落时间)
+            Core.AutoEnvRunner.TriggerSunScheduleRefresh();
             
             _locationDebounceCoroutine = null;
         }

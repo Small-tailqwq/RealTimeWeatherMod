@@ -130,6 +130,19 @@ namespace ChillWithYou.EnvSync.Core
             }
         }
 
+        /// <summary>
+        /// 公开方法：立即刷新日出日落数据（供外部调用，如城市修改时）
+        /// </summary>
+        public static void TriggerSunScheduleRefresh()
+        {
+            if (_instance != null)
+            {
+                ChillEnvPlugin.Log?.LogInfo("🌅 外部触发日出日落刷新");
+                string today = DateTime.Now.ToString("yyyy-MM-dd");
+                _instance.StartCoroutine(_instance.SyncSunScheduleRoutine(today));
+            }
+        }
+
         private void TriggerSync(bool forceApi, bool forceApply)
         {
             ChillEnvPlugin.Log?.LogInfo($"TriggerSync called (forceApi={forceApi}, forceApply={forceApply})");
