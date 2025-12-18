@@ -18,23 +18,23 @@ namespace ChillWithYou.EnvSync.Patches
         }
     }
 
-    [HarmonyPatch(typeof(EnviromentController), "Setup")]
+    [HarmonyPatch(typeof(EnvironmentController), "Setup")]
     internal static class EnvControllerPatch
     {
-        static void Postfix(EnviromentController __instance)
+        static void Postfix(EnvironmentController __instance)
         {
             EnvRegistry.Register(__instance.EnvironmentType, __instance);
         }
     }
 
-    [HarmonyPatch(typeof(FacilityEnviroment), "Setup")]
+    [HarmonyPatch(typeof(FacilityEnvironment), "Setup")]
     internal static class FacilityEnvPatch
     {
-        static void Postfix(FacilityEnviroment __instance)
+        static void Postfix(FacilityEnvironment __instance)
         {
             try
             {
-                FieldInfo field = typeof(FacilityEnviroment).GetField("_windowViewService", BindingFlags.Instance | BindingFlags.NonPublic);
+                FieldInfo field = typeof(FacilityEnvironment).GetField("_windowViewService", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (field != null)
                 {
                     object service = field.GetValue(__instance);
@@ -126,11 +126,11 @@ namespace ChillWithYou.EnvSync.Patches
         }
     }
 
-    [HarmonyPatch(typeof(EnviromentController), "OnClickButtonMainIcon")]
+    [HarmonyPatch(typeof(EnvironmentController), "OnClickButtonMainIcon")]
     internal static class UserInteractionPatch
     {
         public static bool IsSimulatingClick = false;
-        static void Prefix(EnviromentController __instance)
+        static void Prefix(EnvironmentController __instance)
         {
             if (!IsSimulatingClick)
             {
@@ -148,12 +148,56 @@ namespace ChillWithYou.EnvSync.Patches
                     ChillEnvPlugin.Log?.LogDebug($"[用户交互] 已从托管列表移除 {type}");
                 }
                 
-                // 特殊处理：用户关闭系统抽中的鲸鱼时，清除标志（不恢复天气）
+                // 特殊处理：用户关闭系统抽中的鲸鱼时,清除标志（不恢复天气）
                 if (type == EnvironmentType.Whale && SceneryAutomationSystem.IsWhaleSystemTriggered)
                 {
                     SceneryAutomationSystem.IsWhaleSystemTriggered = false;
                     ChillEnvPlugin.Log?.LogInfo("[鲸鱼彩蛋] 用户手动关闭了系统抽中的鲸鱼，标志已清除");
                 }
+            }
+        }
+    }
+
+    // 监控解锁状态是否被重新锁定
+    [HarmonyPatch]
+    internal static class UnlockStatusMonitorPatch
+    {
+        // 尝试监控 _isLocked 的 Value setter
+        static System.Collections.Generic.IEnumerable<MethodBase> TargetMethods()
+        {
+            var results = new System.Collections.Generic.List<MethodBase>();
+            try
+            {
+                // 查找所有可能修改 _isLocked 的地方
+                var assembly = typeof(UnlockItemService).Assembly;
+                foreach (var type in assembly.GetTypes())
+                {
+                    if (type.Name.Contains("UnlockEnvironmentData") || type.Name.Contains("UnlockDecorationData"))
+                    {
+                        var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        foreach (var method in methods)
+                        {
+                            if (method.Name.Contains("Lock") || method.Name.Contains("Unlock"))
+                            {
+                                results.Add(method);
+                                ChillEnvPlugin.Log?.LogInfo($"[监控] 找到解锁相关方法: {type.Name}.{method.Name}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ChillEnvPlugin.Log?.LogError($"[监控] 查找目标方法失败: {ex.Message}");
+            }
+            return results;
+        }
+
+        static void Prefix(MethodBase __originalMethod)
+        {
+            if (ChillEnvPlugin.Cfg_DebugMode.Value && ChillEnvPlugin.Initialized)
+            {
+                ChillEnvPlugin.Log?.LogWarning($"[监控] 检测到解锁状态变更调用: {__originalMethod.DeclaringType?.Name}.{__originalMethod.Name}");
             }
         }
     }

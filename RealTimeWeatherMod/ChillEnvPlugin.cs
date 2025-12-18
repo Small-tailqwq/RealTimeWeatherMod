@@ -9,7 +9,7 @@ using Bulbul;
 
 namespace ChillWithYou.EnvSync
 {
-  [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "5.1.2")]
+  [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "5.1.3")]
   public class ChillEnvPlugin : BaseUnityPlugin
   {
     internal static ChillEnvPlugin Instance;
@@ -54,7 +54,7 @@ namespace ChillWithYou.EnvSync
       Instance = this;
       Log = Logger;
 
-      Log.LogWarning("【5.1.2】启动 - 老坛酸菜版");
+      Log.LogWarning("【5.1.3】启动 - 解锁调试版");
 
       try
       {
@@ -123,23 +123,163 @@ namespace ChillWithYou.EnvSync
 
       Initialized = true;
       Log?.LogInfo("初始化完成");
+
+      // 如果启用了调试模式，延迟验证解锁状态
+      if (Cfg_DebugMode.Value && Instance != null)
+      {
+        Instance.StartCoroutine(VerifyUnlockAfterDelay(svc, 3f));
+      }
+    }
+
+    // 延迟验证解锁状态（检查是否被重新锁定）
+    private static System.Collections.IEnumerator VerifyUnlockAfterDelay(UnlockItemService svc, float delay)
+    {
+      yield return new WaitForSeconds(delay);
+      Log?.LogInfo($"[调试] {delay}秒后验证解锁状态...");
+
+      int lockedEnvCount = 0;
+      int lockedDecoCount = 0;
+
+      try
+      {
+        var envProp = svc.GetType().GetProperty("Environment");
+        var unlockEnvObj = envProp.GetValue(svc);
+        var dictField = unlockEnvObj.GetType().GetField("_environmentDic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        var dict = dictField.GetValue(unlockEnvObj) as System.Collections.IDictionary;
+
+        foreach (System.Collections.DictionaryEntry entry in dict)
+        {
+          var data = entry.Value;
+          var lockField = data.GetType().GetField("_isLocked", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+          var reactive = lockField.GetValue(data);
+          var propValue = reactive.GetType().GetProperty("Value");
+          bool isLocked = (bool)propValue.GetValue(reactive, null);
+          if (isLocked)
+          {
+            lockedEnvCount++;
+            Log?.LogWarning($"[调试] ⚠️ 环境 {entry.Key} 被重新锁定!");
+          }
+        }
+      }
+      catch (Exception ex) { Log?.LogError($"[调试] 验证环境失败: {ex.Message}"); }
+
+      try
+      {
+        var decoProp = svc.GetType().GetProperty("Decoration");
+        var unlockDecoObj = decoProp?.GetValue(svc);
+        if (unlockDecoObj != null)
+        {
+          var dictField = unlockDecoObj.GetType().GetField("_decorationDic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+          var dict = dictField?.GetValue(unlockDecoObj) as System.Collections.IDictionary;
+
+          if (dict != null)
+          {
+            foreach (System.Collections.DictionaryEntry entry in dict)
+            {
+              var data = entry.Value;
+              var lockField = data.GetType().GetField("_isLocked", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+              var reactive = lockField?.GetValue(data);
+              if (reactive != null)
+              {
+                var propValue = reactive.GetType().GetProperty("Value");
+                bool isLocked = (bool)propValue.GetValue(reactive, null);
+                if (isLocked)
+                {
+                  lockedDecoCount++;
+                  Log?.LogWarning($"[调试] ⚠️ 装饰品 {entry.Key} 被重新锁定!");
+                }
+              }
+            }
+          }
+        }
+      }
+      catch (Exception ex) { Log?.LogError($"[调试] 验证装饰品失败: {ex.Message}"); }
+
+      if (lockedEnvCount == 0 && lockedDecoCount == 0)
+      {
+        Log?.LogInfo($"[调试] ✅ 验证通过: 所有解锁状态保持正常");
+      }
+      else
+      {
+        Log?.LogError($"[调试] ❌ 发现问题: {lockedEnvCount} 个环境和 {lockedDecoCount} 个装饰品被重新锁定");
+        Log?.LogError($"[调试] 可能原因: 游戏在初始化后重新加载了存档数据");
+      }
     }
 
     internal static void CallServiceChangeWeather(EnvironmentType envType)
     {
-      if (WindowViewServiceInstance == null || ChangeWeatherMethod == null) return;
-      try
-      {
-        var parameters = ChangeWeatherMethod.GetParameters();
-        if (parameters.Length == 0) return;
-        Type windowViewEnumType = parameters[0].ParameterType;
-        object enumValue = Enum.Parse(windowViewEnumType, envType.ToString());
-        ChangeWeatherMethod.Invoke(WindowViewServiceInstance, new object[] { enumValue });
-      }
-      catch (Exception ex) { Log?.LogError($"Service调用失败: {ex.Message}"); }
+        // ---------------------------------------------------------
+        // 第一阶段：寻找 EnvironmentUI 实例
+        // ---------------------------------------------------------
+        MonoBehaviour targetUI = null;
+        
+        // 我们不需要缓存 targetUI，因为 UI 可能会被销毁或重载，每次动态找最稳
+        Type uiType = AccessTools.TypeByName("Bulbul.EnvironmentUI");
+        if (uiType != null)
+        {
+            // 暴力查找所有 EnvironmentUI (包括隐藏的)
+            var allUIs = UnityEngine.Resources.FindObjectsOfTypeAll(uiType);
+            if (allUIs != null && allUIs.Length > 0)
+            {
+                // 优先找场景里的
+                foreach (var obj in allUIs)
+                {
+                    var mono = obj as MonoBehaviour;
+                    // 过滤掉 Asset 资源，只找 Scene 里的对象
+                    if (mono != null && mono.gameObject.scene.rootCount != 0)
+                    {
+                        targetUI = mono;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (targetUI == null)
+        {
+            // 如果连 UI 都找不到，说明可能在主菜单或者加载中，直接跳过
+            return;
+        }
+
+        // ---------------------------------------------------------
+        // 第二阶段：调用 EnvironmentUI.ChangeTime
+        // ---------------------------------------------------------
+        try
+        {
+            // 目标方法：private void ChangeTime(EnvironmentType environmentType)
+            // 这个方法是私有的，而且它会自动处理 SaveData 的更新，完美解决死循环
+            var changeTimeMethod = AccessTools.Method(targetUI.GetType(), "ChangeTime");
+
+            if (changeTimeMethod != null)
+            {
+                var parameters = changeTimeMethod.GetParameters();
+                if (parameters.Length > 0)
+                {
+                    // 获取目标方法的枚举类型 (Bulbul.EnvironmentType)
+                    Type targetEnumType = parameters[0].ParameterType;
+                    
+                    // 将我们的 envType 转为目标枚举
+                    object enumValue = Enum.Parse(targetEnumType, envType.ToString());
+
+                    // 执行调用
+                    changeTimeMethod.Invoke(targetUI, new object[] { enumValue });
+                    
+                    // 成功日志
+                    Log?.LogInfo($"[Service] 🌧️ 天气已切换并同步状态: {envType}");
+                }
+            }
+            else
+            {
+                Log?.LogError("[Service] ❌ 找不到 ChangeTime 方法，游戏版本可能不匹配");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log?.LogError($"[Service] ❌ 调用 ChangeTime 失败: {ex.Message}");
+        }
     }
 
-    internal static void SimulateClickMainIcon(EnviromentController ctrl)
+    internal static void SimulateClickMainIcon(EnvironmentController ctrl)
     {
       if (ctrl == null) return;
       try
@@ -170,18 +310,36 @@ namespace ChillWithYou.EnvSync
         var dictField = unlockEnvObj.GetType().GetField("_environmentDic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
         var dict = dictField.GetValue(unlockEnvObj) as System.Collections.IDictionary;
         int count = 0;
+        int verifyCount = 0;
         foreach (System.Collections.DictionaryEntry entry in dict)
         {
           var data = entry.Value;
           var lockField = data.GetType().GetField("_isLocked", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
           var reactive = lockField.GetValue(data);
           var propValue = reactive.GetType().GetProperty("Value");
+
+          // 解锁前记录状态
+          bool beforeUnlock = (bool)propValue.GetValue(reactive, null);
+
+          // 执行解锁
           propValue.SetValue(reactive, false, null);
           count++;
+
+          // 验证解锁是否成功
+          bool afterUnlock = (bool)propValue.GetValue(reactive, null);
+          if (!afterUnlock) verifyCount++;
+
+          if (Cfg_DebugMode.Value)
+          {
+            Log?.LogInfo($"[环境解锁] {entry.Key}: {beforeUnlock} -> {afterUnlock}");
+          }
         }
-        Log?.LogInfo($"✅ 已解锁 {count} 个环境");
+        Log?.LogInfo($"✅ 已解锁 {count} 个环境 (验证成功: {verifyCount})");
       }
-      catch { }
+      catch (Exception ex)
+      {
+        Log?.LogError($"环境解锁失败: {ex}");
+      }
     }
 
     private static void ForceUnlockAllDecorations(UnlockItemService svc)
@@ -197,6 +355,7 @@ namespace ChillWithYou.EnvSync
         var dict = dictField.GetValue(unlockDecoObj) as System.Collections.IDictionary;
         if (dict == null) return;
         int count = 0;
+        int verifyCount = 0;
         foreach (System.Collections.DictionaryEntry entry in dict)
         {
           var data = entry.Value;
@@ -206,12 +365,29 @@ namespace ChillWithYou.EnvSync
           if (reactive == null) continue;
           var propValue = reactive.GetType().GetProperty("Value");
           if (propValue == null) continue;
+
+          // 解锁前记录状态
+          bool beforeUnlock = (bool)propValue.GetValue(reactive, null);
+
+          // 执行解锁
           propValue.SetValue(reactive, false, null);
           count++;
+
+          // 验证解锁是否成功
+          bool afterUnlock = (bool)propValue.GetValue(reactive, null);
+          if (!afterUnlock) verifyCount++;
+
+          if (Cfg_DebugMode.Value)
+          {
+            Log?.LogInfo($"[装饰解锁] {entry.Key}: {beforeUnlock} -> {afterUnlock}");
+          }
         }
-        Log?.LogInfo($"✅ 已解锁 {count} 个装饰品");
+        Log?.LogInfo($"✅ 已解锁 {count} 个装饰品 (验证成功: {verifyCount})");
       }
-      catch { }
+      catch (Exception ex)
+      {
+        Log?.LogError($"装饰品解锁失败: {ex}");
+      }
     }
   }
 }

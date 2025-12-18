@@ -145,10 +145,15 @@ namespace ChillWithYou.EnvSync.Core
 
         private void TriggerSync(bool forceApi, bool forceApply)
         {
-            ChillEnvPlugin.Log?.LogInfo($"TriggerSync called (forceApi={forceApi}, forceApply={forceApply})");
+            // 只有在调试模式下才打印这些流水账，平时保持安静
+            if (ChillEnvPlugin.Cfg_DebugMode.Value)
+            {
+                ChillEnvPlugin.Log?.LogInfo($"TriggerSync called (forceApi={forceApi}, forceApply={forceApply})");
+            }
 
             if (ChillEnvPlugin.Cfg_DebugMode.Value)
             {
+                // 模拟数据逻辑
                 ChillEnvPlugin.Log?.LogWarning("[调试模式] 使用模拟数据...");
                 int mockCode = ChillEnvPlugin.Cfg_DebugCode.Value;
                 var mockWeather = new WeatherInfo { Code = mockCode, Temperature = ChillEnvPlugin.Cfg_DebugTemp.Value, Text = ChillEnvPlugin.Cfg_DebugText.Value, Condition = WeatherService.MapCodeToCondition(mockCode), UpdateTime = DateTime.Now };
@@ -158,49 +163,60 @@ namespace ChillWithYou.EnvSync.Core
 
             bool weatherEnabled = ChillEnvPlugin.Cfg_EnableWeatherSync.Value;
             string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
-            ChillEnvPlugin.Log?.LogInfo($"TriggerSync: EnableWeatherSync={weatherEnabled}, ApiKeyPresent={!string.IsNullOrEmpty(apiKey)}, HasDefaultKey={WeatherService.HasDefaultKey}");
+            // 下面这行检查日志也关掉，或者只在 Debug 模式显示
+            if (ChillEnvPlugin.Cfg_DebugMode.Value)
+            {
+                ChillEnvPlugin.Log?.LogInfo($"TriggerSync: EnableWeatherSync={weatherEnabled}, ApiKeyPresent={!string.IsNullOrEmpty(apiKey)}, HasDefaultKey={WeatherService.HasDefaultKey}");
+            }
 
             if (!(weatherEnabled && (!string.IsNullOrEmpty(apiKey) || WeatherService.HasDefaultKey)))
             {
                 if (!weatherEnabled)
-                    ChillEnvPlugin.Log?.LogInfo("TriggerSync aborted: Weather sync disabled (Cfg_EnableWeatherSync=false)");
+                {
+                    // 只有真的被禁用且是第一次或强制时才打印，防止刷屏
+                    if (forceApply || ChillEnvPlugin.Cfg_DebugMode.Value)
+                        ChillEnvPlugin.Log?.LogInfo("TriggerSync aborted: Weather sync disabled");
+                }
                 else if (string.IsNullOrEmpty(apiKey) && !WeatherService.HasDefaultKey)
-                    ChillEnvPlugin.Log?.LogInfo("TriggerSync aborted: No API key available and no default key");
+                {
+                    if (forceApply || ChillEnvPlugin.Cfg_DebugMode.Value)
+                        ChillEnvPlugin.Log?.LogInfo("TriggerSync aborted: No API key");
+                }
 
                 ApplyTimeBasedEnvironment(forceApply);
                 return;
             }
 
             string location = ChillEnvPlugin.Cfg_Location.Value;
-            ChillEnvPlugin.Log?.LogInfo($"TriggerSync: target location='{location}', forceApi={forceApi}");
 
             if (forceApi || WeatherService.CachedWeather == null)
             {
                 if (_isFetching)
                 {
-                    ChillEnvPlugin.Log?.LogWarning("TriggerSync aborted: fetch already in progress (_isFetching=true)");
+                    // 这个警告保留，因为它确实是异常情况
+                    ChillEnvPlugin.Log?.LogWarning("TriggerSync aborted: fetch already in progress");
                     return;
                 }
 
                 _isFetching = true;
-                ChillEnvPlugin.Log?.LogInfo("TriggerSync: starting WeatherService.FetchWeather coroutine");
+                if (ChillEnvPlugin.Cfg_DebugMode.Value) ChillEnvPlugin.Log?.LogInfo("TriggerSync: starting WeatherService.FetchWeather");
                 StartCoroutine(WeatherService.FetchWeather(apiKey, location, forceApi, (weather) => {
                     _isFetching = false;
                     if (weather != null) ApplyEnvironment(weather, forceApply);
                     else { ChillEnvPlugin.Log?.LogWarning("[API异常] 启用时间兜底"); ApplyTimeBasedEnvironment(forceApply); }
 
-                    // 如果期间有排队的强制刷新（如改城市/F7），在当前请求结束后立即补一次
                     if (_pendingForceRefresh)
                     {
                         _pendingForceRefresh = false;
-                        ChillEnvPlugin.Log?.LogInfo("TriggerSync: pending force refresh detected, running now");
                         ForceRefreshWeather();
                     }
                 }));
             }
             else
             {
-                ChillEnvPlugin.Log?.LogInfo("TriggerSync: using cached weather");
+                // 缓存命中时保持安静，除非开调试
+                if (ChillEnvPlugin.Cfg_DebugMode.Value)
+                    ChillEnvPlugin.Log?.LogInfo("TriggerSync: using cached weather");
                 ApplyEnvironment(WeatherService.CachedWeather, forceApply);
             }
         }
