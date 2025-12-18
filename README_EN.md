@@ -47,7 +47,10 @@ A BepInEx plugin for the game *Chill with You - Lo-Fi Story*. It automatically s
 - 🌓 **Day/Night Cycle**: Automatically switches between Day/Sunset/Night based on configured sunrise/sunset times.
 - 🔓 **Unlock Everything**: Automatically unlocks all environments and decorations.
   - *Note: This is session-based and does not modify your save file.*
-  - Configurable via `UnlockAllEnvironments` and `UnlockAllDecorations`.
+  - Configurable via:
+    - `UnlockAllEnvironments`: Unlock all environment scenes
+    - `UnlockAllDecorations`: Unlock all decoration items
+    - `UnlockPurchasableItems`: Skip in-game currency purchases (colors/variants) - **May significantly reduce gameplay time**
 - ⌨️ **Hotkeys**:
   - `F7` - **Force Refresh**: Ignores cache, forces a fresh API call to Seniverse, and resets the timer.
   - `F8` - **Show Status**: Prints current status to the console log.
@@ -96,11 +99,21 @@ A BepInEx plugin for the game *Chill with You - Lo-Fi Story*. It automatically s
 - [BepInEx 5.4.23.4](https://github.com/BepInEx/BepInEx/releases) (Developed on this version)
 
 ### Steps
+
+> ⚠️ **Important: Follow the order strictly!**
+
 1. Install BepInEx framework correctly.
-2. Launch the game once to generate folders, then exit.
+2. **Launch the game FIRST to let BepInEx initialize**
+   - Start the game and wait until it loads to the main menu
+   - Look for the BepInEx console window
+   - Confirm that the `BepInEx/plugins/` folder has been created
+   - Exit the game
 3. Place `RealTimeWeatherMod.dll` into the `BepInEx/plugins/` folder.
-4. Launch the game. The plugin will load automatically.
-5. Edit the configuration file. Press `F7` in-game to reload config after editing.
+4. Launch the game again. The plugin will load automatically.
+5. Edit the configuration file (located at `BepInEx/config/chillwithyou.envsync.cfg`).
+6. Press `F7` in-game to reload config after editing.
+
+**Troubleshooting**: If the mod doesn't work, make sure you let BepInEx initialize completely before installing the mod!
 
 ## ⚙️ Configuration
 
@@ -151,7 +164,12 @@ UnlockAllEnvironments = true
 
 ## Automatically unlock all decorations
 ## Warning: May include unimplemented items, use with caution.
-UnlockAllDecorations = true
+UnlockAllDecorations = false
+
+## Skip in-game currency purchases (color/type variants)
+## WARNING: Enabling this will significantly shorten gameplay lifespan.
+## Requires game restart to take effect.
+UnlockPurchasableItems = false
 
 [WeatherAPI]
 ## Enable Weather API Synchronization
@@ -264,6 +282,17 @@ Syncs environment based on local time:
 ## 📝 Version History (Highlights)
 
 *Note: Version numbers are hallucinated by AI. I have no control over this.*
+
+### v5.1.3 - The Last Two Months
+
+  - Fixed UI layer display content unable to hook correctly due to game word corrections.
+  - Fixed time switching not working due to game update changing time adjustment methods.
+  - Fixed hotkey not working due to the above errors.
+  - Added unlock support for items in "Change Mood" that require in-game currency to purchase.
+    - Note: This config option is **disabled by default**. Enabling it may significantly shorten gameplay lifespan.
+    - Enabling this config does not support hot-reload. Ensure the game is closed when modifying or restart after modification.
+    - This config does not affect save files. You can still manually purchase items after disabling unlock features and restarting.
+  - This version took approximately 4 hours to develop. Some scenarios may not have been thoroughly tested. If you encounter bugs, please report via GitHub.
 
 ### v5.1.2 - The "LaoTanSuanCai" Edition (?)
 

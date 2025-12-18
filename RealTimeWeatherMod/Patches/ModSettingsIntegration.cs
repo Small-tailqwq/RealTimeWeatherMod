@@ -111,7 +111,7 @@ namespace ChillWithYou.EnvSync.Patches
                 if (regMethod != null)
                 {
                     // 参数：Mod名称, Mod版本
-                    regMethod.Invoke(managerInstance, new object[] { "Chill Env Sync", "b5.1.2" });
+                    regMethod.Invoke(managerInstance, new object[] { "Chill Env Sync", "5.1.3" });
                 }
 
                 // =========================================================

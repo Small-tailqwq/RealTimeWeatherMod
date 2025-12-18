@@ -30,6 +30,7 @@ namespace ChillWithYou.EnvSync
     internal static ConfigEntry<bool> Cfg_EnableWeatherSync;
     internal static ConfigEntry<bool> Cfg_UnlockEnvironments;
     internal static ConfigEntry<bool> Cfg_UnlockDecorations;
+    internal static ConfigEntry<bool> Cfg_UnlockPurchasableItems;
 
     // UI 配置
     internal static ConfigEntry<bool> Cfg_ShowWeatherOnUI;
@@ -60,6 +61,7 @@ namespace ChillWithYou.EnvSync
       {
         var harmony = new Harmony("ChillWithYou.EnvSync");
         harmony.PatchAll();
+        Patches.UnlockConditionGodMode.ApplyPatches(harmony);
       }
       catch (Exception ex)
       {
@@ -97,7 +99,8 @@ namespace ChillWithYou.EnvSync
       Cfg_Location = Config.Bind("WeatherAPI", "Location", "beijing", "城市名称");
 
       Cfg_UnlockEnvironments = Config.Bind("Unlock", "UnlockAllEnvironments", true, "自动解锁环境");
-      Cfg_UnlockDecorations = Config.Bind("Unlock", "UnlockAllDecorations", true, "自动解锁装饰");
+      Cfg_UnlockDecorations = Config.Bind("Unlock", "UnlockAllDecorations", true, "自动解锁装饰道具");
+      Cfg_UnlockPurchasableItems = Config.Bind("Unlock", "UnlockPurchasableItems", false, "解锁游戏币购买内容");
 
       Cfg_ShowWeatherOnUI = Config.Bind("UI", "ShowWeatherOnDate", true, "日期栏显示天气");
       // 【新增配置】
@@ -342,52 +345,98 @@ namespace ChillWithYou.EnvSync
       }
     }
 
+    //private static void ForceUnlockAllDecorations(UnlockItemService svc)
+    /// <summary>
+    /// 【通用解锁核弹】
+    /// 暴力扫描 UnlockItemService 下的所有属性，只要发现内部含有 IDictionary 且元素含有 _isLocked 字段，一律解锁！
+    /// </summary>
+    /// <summary>
+    /// 【通用解锁核弹 v2 - 钻地弹版】
+    /// 升级逻辑：不仅扫描 Property，还暴力扫描所有 Private Fields (特别是 _conditionService)。
+    /// 只要发现内部含有 IDictionary 且元素含有 _isLocked 字段，一律解锁！
+    /// </summary>
     private static void ForceUnlockAllDecorations(UnlockItemService svc)
     {
-      try
-      {
-        var decoProp = svc.GetType().GetProperty("Decoration");
-        if (decoProp == null) return;
-        var unlockDecoObj = decoProp.GetValue(svc);
-        if (unlockDecoObj == null) return;
-        var dictField = unlockDecoObj.GetType().GetField("_decorationDic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-        if (dictField == null) return;
-        var dict = dictField.GetValue(unlockDecoObj) as System.Collections.IDictionary;
-        if (dict == null) return;
-        int count = 0;
-        int verifyCount = 0;
-        foreach (System.Collections.DictionaryEntry entry in dict)
+        if (svc == null) return;
+
+        Log?.LogInfo("☢️ 启动通用解锁核弹 v2 (钻地模式)...");
+        int totalUnlocked = 0;
+
+        try
         {
-          var data = entry.Value;
-          var lockField = data.GetType().GetField("_isLocked", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-          if (lockField == null) continue;
-          var reactive = lockField.GetValue(data);
-          if (reactive == null) continue;
-          var propValue = reactive.GetType().GetProperty("Value");
-          if (propValue == null) continue;
+            // 1. 获取 Service 下的所有字段 (包括私有的 _conditionService, _environment, _decoration 等)
+            // 使用 Harmony 的 AccessTools.GetDeclaredFields 可以无视访问权限拿到所有字段
+            var serviceFields = AccessTools.GetDeclaredFields(svc.GetType());
 
-          // 解锁前记录状态
-          bool beforeUnlock = (bool)propValue.GetValue(reactive, null);
+            foreach (var field in serviceFields)
+            {
+                // 跳过一些明显不是目标的数据加载器，防止浪费时间或报错
+                if (field.FieldType.Name.Contains("MasterData") || field.FieldType.Name.Contains("Loader")) 
+                    continue;
 
-          // 执行解锁
-          propValue.SetValue(reactive, false, null);
-          count++;
+                // 获取字段的值 (例如 UnlockConditionService 实例)
+                object componentObj = field.GetValue(svc);
+                if (componentObj == null) continue;
 
-          // 验证解锁是否成功
-          bool afterUnlock = (bool)propValue.GetValue(reactive, null);
-          if (!afterUnlock) verifyCount++;
+                // Log?.LogInfo($"👉 正在扫描组件: {field.Name} ({componentObj.GetType().Name})");
 
-          if (Cfg_DebugMode.Value)
-          {
-            Log?.LogInfo($"[装饰解锁] {entry.Key}: {beforeUnlock} -> {afterUnlock}");
-          }
+                // 2. 深入扫描这个组件内部的所有字典
+                var subFields = AccessTools.GetDeclaredFields(componentObj.GetType());
+                
+                foreach (var subField in subFields)
+                {
+                    // 必须是字典类型
+                    if (!typeof(System.Collections.IDictionary).IsAssignableFrom(subField.FieldType)) continue;
+
+                    var dict = subField.GetValue(componentObj) as System.Collections.IDictionary;
+                    if (dict == null || dict.Count == 0) continue;
+
+                    int groupCount = 0;
+                    
+                    // 3. 遍历字典内容
+                    foreach (System.Collections.DictionaryEntry entry in dict)
+                    {
+                        var dataItem = entry.Value;
+                        if (dataItem == null) continue;
+
+                        // 4. 暴力查找 _isLocked 字段
+                        var lockField = AccessTools.Field(dataItem.GetType(), "_isLocked");
+                        if (lockField == null) continue;
+
+                        var reactiveBool = lockField.GetValue(dataItem);
+                        if (reactiveBool == null) continue;
+
+                        // R3/UniRx 的 ReactiveProperty.Value
+                        var valueProp = reactiveBool.GetType().GetProperty("Value");
+                        if (valueProp == null) continue;
+
+                        // 5. 执行解锁！
+                        bool isLocked = (bool)valueProp.GetValue(reactiveBool, null);
+                        if (isLocked)
+                        {
+                            valueProp.SetValue(reactiveBool, false, null);
+                            groupCount++;
+                            totalUnlocked++;
+                            if (Cfg_DebugMode.Value)
+                            {
+                                // 打印一下 Key，看看解锁了啥 (颜色变种通常 key 会很长或者是数字)
+                                Log?.LogInfo($"   🔓 解锁: {entry.Key} (在 {field.Name}.{subField.Name})");
+                            }
+                        }
+                    }
+
+                    if (groupCount > 0)
+                    {
+                        Log?.LogInfo($"✅ 在 {field.Name} -> {subField.Name} 中解锁了 {groupCount} 个项目");
+                    }
+                }
+            }
+            Log?.LogInfo($"🎉 核弹 v2 投放完毕，本次共解锁 {totalUnlocked} 个项目！");
         }
-        Log?.LogInfo($"✅ 已解锁 {count} 个装饰品 (验证成功: {verifyCount})");
-      }
-      catch (Exception ex)
-      {
-        Log?.LogError($"装饰品解锁失败: {ex}");
-      }
+        catch (Exception ex)
+        {
+            Log?.LogError($"❌ 通用解锁 v2 失败: {ex}");
+        }
     }
   }
 }
