@@ -34,7 +34,7 @@
   - 可选配置项
 	  - `UnlockAllEnvironments`：是否解锁所有环境
 	  - `UnlockAllDecorations`： 是否解锁所有装饰品
-		- `UnlockPurchasableItems`：是否解锁所有游戏币解锁内容
+	  - `UnlockPurchasableItems`：是否解锁所有游戏币解锁内容
 - ⌨️ **快捷键操作**：
   - `F7` - 强制刷新天气
 	  - 忽略缓存，强制从心知天气 API 获取最新的实时天气数据。
@@ -388,6 +388,7 @@ RefreshMinutes = 30
 ## 🐛 已知问题
 
 - 首次加载可能需要等待 15 秒后才会进行第一次环境同步（这玩意应该不算问题吧？~~男人不能说太快，所以我加了点延迟？~~）
+- F9 可能导致部分按钮 UI 异常，但是不影响游戏内容，修复优先级低
 
 ## 🤝 贡献
 
@@ -417,14 +418,13 @@ RefreshMinutes = 30
 
 - BepInEx 团队
 - Harmony 补丁库
+- Duvet
 - 心知天气 API 服务
 - Google Gemini3Pro
-- OpenAI ChatGPT5.1
+- Github Copilot
 - Claude Sonnet and Ops 4.5
-- 我的肝脏和眼球还有我的屁股
-	- 该换一个好椅子了
-	- 整点眼药水
-
+- OpenAI ChatGPT5.1
+- Github Copilot
 
 ---
 
@@ -434,4 +434,4 @@ RefreshMinutes = 30
 游戏《Chill with You - Lo-Fi Story》及其相关素材、商标的版权均归原作者所有。
 
 
-> 我的桌上常有一盏熔岩灯
+> 即使生活一团糟，但也要心存希望
