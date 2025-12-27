@@ -80,54 +80,57 @@ namespace ChillWithYou.EnvSync.Patches
                 // =========================================================
                 // 1. 反射获取管理器实例 (Reflection Setup)
                 // =========================================================
-                
-                // 获取类型
                 Type managerType = Type.GetType(MANAGER_TYPE_NAME);
-                if (managerType == null) return false; // 类型未加载，说明主框架未运行
-
-                // 获取单例属性 Instance
-                var instanceProp = managerType.GetProperty("Instance", 
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (managerType == null) return false;
+                var instanceProp = managerType.GetProperty("Instance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (instanceProp == null) return false;
-
-                // 获取单例对象
                 object managerInstance = instanceProp.GetValue(null);
-                if (managerInstance == null) return false; // 单例尚未初始化
-
-                // 检查初始化状态 (兼容性检查)
+                if (managerInstance == null) return false;
                 var isInitializedProp = managerType.GetProperty("IsInitialized");
                 if (isInitializedProp != null)
                 {
                     bool isInitialized = (bool)isInitializedProp.GetValue(managerInstance);
-                    if (!isInitialized) return false; // 主框架还在启动中
+                    if (!isInitialized) return false;
                 }
 
                 // =========================================================
                 // 2. 注册 MOD 信息 (Register Mod Info)
                 // =========================================================
-                
-                // 获取注册方法
                 var regMethod = managerType.GetMethod("RegisterMod", new Type[] { typeof(string), typeof(string) });
                 if (regMethod != null)
                 {
-                    // 参数：Mod名称, Mod版本
                     regMethod.Invoke(managerInstance, new object[] { "Chill Env Sync", "5.1.3" });
+                }
+
+                // =========================================================
+                // 2.5 注册多语言翻译 (新增)
+                // =========================================================
+                var regTransMethod = managerType.GetMethod("RegisterTranslation", new Type[] { typeof(string), typeof(string), typeof(string), typeof(string) });
+                bool hasTranslation = regTransMethod != null;
+                if (hasTranslation)
+                {
+                    // 参数：Key, English, Japanese, Chinese
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_ENABLE", "Weather Sync", "天気同期", "天气同步" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_UI", "Show Weather on UI", "UIに天気を表示", "日期栏天气" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_DETAIL", "Detailed Segments", "詳細セグメント", "详细时段" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_EGG", "Easter Eggs", "イースターエッグ", "彩蛋" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_CITY", "City", "都市", "城市" });
                 }
 
                 // =========================================================
                 // 3. 注册具体设置项 (Register Settings)
                 // =========================================================
-
                 bool allSuccess = true;
 
                 // --- 开关示例：启用天气同步 ---
+                string labelEnable = hasTranslation ? "ENV_SYNC_ENABLE" : "天气同步";
                 if (!AddToggleSafe(managerInstance, managerType,
-                    "天气同步", // 显示的标签
-                    ChillEnvPlugin.Cfg_EnableWeatherSync.Value, // 当前值
-                    (value) => // 回调函数
+                    labelEnable,
+                    ChillEnvPlugin.Cfg_EnableWeatherSync.Value,
+                    (value) =>
                     {
                         ChillEnvPlugin.Cfg_EnableWeatherSync.Value = value;
-                        ChillEnvPlugin.Instance.Config.Save(); // 别忘了保存配置！
+                        ChillEnvPlugin.Instance.Config.Save();
                         ChillEnvPlugin.Log?.LogInfo($"[设置] 天气API同步已设置为: {value}");
                     }))
                 {
@@ -135,8 +138,9 @@ namespace ChillWithYou.EnvSync.Patches
                 }
 
                 // --- 开关示例：UI显示 ---
+                string labelUI = hasTranslation ? "ENV_SYNC_UI" : "日期栏天气";
                 AddToggleSafe(managerInstance, managerType,
-                    "日期栏天气",
+                    labelUI,
                     ChillEnvPlugin.Cfg_ShowWeatherOnUI.Value,
                     (value) =>
                     {
@@ -144,8 +148,9 @@ namespace ChillWithYou.EnvSync.Patches
                         ChillEnvPlugin.Instance.Config.Save();
                     });
 
+                string labelDetail = hasTranslation ? "ENV_SYNC_DETAIL" : "详细时段";
                 AddToggleSafe(managerInstance, managerType,
-                    "详细时段",
+                    labelDetail,
                     ChillEnvPlugin.Cfg_DetailedTimeSegments.Value,
                     (value) =>
                     {
@@ -153,8 +158,9 @@ namespace ChillWithYou.EnvSync.Patches
                         ChillEnvPlugin.Instance.Config.Save();
                     });
 
+                string labelEgg = hasTranslation ? "ENV_SYNC_EGG" : "彩蛋";
                 AddToggleSafe(managerInstance, managerType,
-                    "彩蛋",
+                    labelEgg,
                     ChillEnvPlugin.Cfg_EnableEasterEggs.Value,
                     (value) =>
                     {
@@ -163,22 +169,19 @@ namespace ChillWithYou.EnvSync.Patches
                     });
 
                 // --- 输入框示例：城市位置 ---
+                string labelCity = hasTranslation ? "ENV_SYNC_CITY" : "城市";
                 if (!AddInputFieldSafe(managerInstance, managerType,
-                    "城市", // 标签
-                    ChillEnvPlugin.Cfg_Location.Value, // 初始文本
-                    (val) => // 回调
+                    labelCity,
+                    ChillEnvPlugin.Cfg_Location.Value,
+                    (val) =>
                     {
                         ChillEnvPlugin.Cfg_Location.Value = val;
                         ChillEnvPlugin.Instance.Config.Save();
-                        Services.WeatherService.InvalidateCache(); // 切换城市时清空缓存，避免沿用旧城市天气
-                        
-                        // 防抖：取消之前的延迟任务
+                        Services.WeatherService.InvalidateCache();
                         if (_locationDebounceCoroutine != null)
                         {
                             StopCoroutine(_locationDebounceCoroutine);
                         }
-                        
-                        // 启动新的延迟任务：3秒后刷新天气
                         _locationDebounceCoroutine = StartCoroutine(RefreshWeatherAfterDelay(val, 3f));
                     }))
                 {
@@ -188,20 +191,15 @@ namespace ChillWithYou.EnvSync.Patches
                 // =========================================================
                 // 4. 完成注册
                 // =========================================================
-
                 if (allSuccess)
                 {
-                    // 只有全部成功才标记为已注册，否则下次可能还会尝试重试（取决于你的重试策略）
-                    // 这里我们为了简单，只要大体成功就标记 true
                     _settingsRegistered = true;
                     return true;
                 }
-                
                 return false;
             }
             catch (Exception ex)
             {
-                // 捕获反射过程中的任何意外，防止影响游戏主逻辑
                 ChillEnvPlugin.Log?.LogError($"❌ [EnvSync] 注册设置时发生致命错误: {ex.Message}");
                 return false;
             }
