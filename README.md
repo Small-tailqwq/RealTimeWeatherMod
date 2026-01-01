@@ -100,7 +100,8 @@
 
 ### 安装步骤
 
-> ⚠️ **重要：必须按顺序安装！**
+> ⚠️ **重要：必须按顺序安装！**  
+> ⚠️ **重要：请在[发布/releases](https://github.com/Small-tailqwq/RealTimeWeatherMod/releases)界面下载 dll 文件**
 
 1. 确保已正确安装 BepInEx 框架
 2. **先启动一次游戏，让 BepInEx 完成初始化**
@@ -113,7 +114,9 @@
 5. 编辑配置文件（位于 `BepInEx/config/chillwithyou.envsync.cfg`）
 6. 游戏中按 `F7` 可以刷新配置
 
-**常见问题**：如果mod无法正常工作，请确保先让 BepInEx 初始化完成后再安装mod！
+**常见问题**：
+- 如果 mod 无法正常工作，请确保先让 BepInEx 初始化完成后再安装 mod！
+- 如果找不到 `*.dll`，说明你下载的是源码（Source code），而不是发布产物（releases）
 
 ## ⚙️ 配置说明
 
