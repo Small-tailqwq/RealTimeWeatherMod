@@ -169,18 +169,21 @@ namespace ChillWithYou.EnvSync.Core
                 ChillEnvPlugin.Log?.LogInfo($"TriggerSync: EnableWeatherSync={weatherEnabled}, ApiKeyPresent={!string.IsNullOrEmpty(apiKey)}, HasDefaultKey={WeatherService.HasDefaultKey}");
             }
 
+            // 如果天气同步被禁用，完全跳过所有天气切换逻辑
+            if (!weatherEnabled)
+            {
+                if (forceApply || ChillEnvPlugin.Cfg_DebugMode.Value)
+                    ChillEnvPlugin.Log?.LogInfo("TriggerSync aborted: Weather sync disabled");
+                return;
+            }
+
+            // 如果天气同步启用但没有API密钥，使用时间模式兜底
             if (!(weatherEnabled && (!string.IsNullOrEmpty(apiKey) || WeatherService.HasDefaultKey)))
             {
-                if (!weatherEnabled)
-                {
-                    // 只有真的被禁用且是第一次或强制时才打印，防止刷屏
-                    if (forceApply || ChillEnvPlugin.Cfg_DebugMode.Value)
-                        ChillEnvPlugin.Log?.LogInfo("TriggerSync aborted: Weather sync disabled");
-                }
-                else if (string.IsNullOrEmpty(apiKey) && !WeatherService.HasDefaultKey)
+                if (string.IsNullOrEmpty(apiKey) && !WeatherService.HasDefaultKey)
                 {
                     if (forceApply || ChillEnvPlugin.Cfg_DebugMode.Value)
-                        ChillEnvPlugin.Log?.LogInfo("TriggerSync aborted: No API key");
+                        ChillEnvPlugin.Log?.LogInfo("TriggerSync: No API key, using time-based fallback");
                 }
 
                 ApplyTimeBasedEnvironment(forceApply);
@@ -285,6 +288,14 @@ namespace ChillWithYou.EnvSync.Core
 
         private void ApplyEnvironment(WeatherInfo weather, bool force)
         {
+            // 检查天气同步开关
+            if (!ChillEnvPlugin.Cfg_EnableWeatherSync.Value)
+            {
+                if (ChillEnvPlugin.Cfg_DebugMode.Value)
+                    ChillEnvPlugin.Log?.LogInfo("[环境] 天气同步已关闭，跳过天气切换");
+                return;
+            }
+
             // 【鲸鱼保护】如果系统抽中的鲸鱼正在开启，跳过所有天气切换
             if (Core.SceneryAutomationSystem.IsWhaleSystemTriggered)
             {
@@ -304,6 +315,14 @@ namespace ChillWithYou.EnvSync.Core
 
         private void ApplyTimeBasedEnvironment(bool force)
         {
+            // 检查天气同步开关
+            if (!ChillEnvPlugin.Cfg_EnableWeatherSync.Value)
+            {
+                if (ChillEnvPlugin.Cfg_DebugMode.Value)
+                    ChillEnvPlugin.Log?.LogInfo("[环境] 天气同步已关闭，跳过天气切换");
+                return;
+            }
+
             // 【鲸鱼保护】如果系统抽中的鲸鱼正在开启，跳过所有天气切换
             if (Core.SceneryAutomationSystem.IsWhaleSystemTriggered)
             {
