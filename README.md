@@ -1,4 +1,4 @@
-﻿# Chill Env Sync（实时天气同步插件）
+# Chill Env Sync（实时天气同步插件）
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Framework 4.7.2](https://img.shields.io/badge/.NET%20Framework-4.7.2-blue.svg)](https://dotnet.microsoft.com/download/dotnet-framework/net472)
