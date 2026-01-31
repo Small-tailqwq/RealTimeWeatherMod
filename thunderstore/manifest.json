@@ -1,0 +1,9 @@
+{
+    "name": "Chill_Env_Sync",
+    "version_number": "1.5.3",
+    "website_url": "https://github.com/Small-tailqwq/RealTimeWeatherMod",
+    "description": "实时天气同步插件，可以根据真实世界的天气情况自动调整游戏内的环境效果，或基于现实时间模拟昼夜循环。",
+    "dependencies": [
+        "BepInEx-BepInExPack-5.4.2304"
+    ]
+}
