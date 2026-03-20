@@ -643,9 +643,9 @@ namespace ChillWithYou.EnvSync.Core
             if (typeProp != null)
             {
               var winType = (WindowViewType)typeProp.GetValue(behaviorObj);
-              if (SaveDataManager.Instance.WindowViewDic.TryGetValue(winType, out var data))
+              if (WindowViewStateAccessor.TryIsWindowViewActive(winType, out var isActive))
               {
-                return data.IsActive;
+                return isActive;
               }
             }
           }

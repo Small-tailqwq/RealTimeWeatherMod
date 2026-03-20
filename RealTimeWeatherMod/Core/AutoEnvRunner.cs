@@ -226,13 +226,24 @@ namespace ChillWithYou.EnvSync.Core
 
         private EnvironmentType? GetCurrentActiveEnvironment()
         {
-            try { var dict = SaveDataManager.Instance.WindowViewDic; foreach (var env in MainEnvironments) { var winType = (WindowViewType)Enum.Parse(typeof(WindowViewType), env.ToString()); if (dict.ContainsKey(winType) && dict[winType].IsActive) return env; } } catch { }
+            foreach (var env in MainEnvironments)
+            {
+                var winType = (WindowViewType)Enum.Parse(typeof(WindowViewType), env.ToString());
+                if (WindowViewStateAccessor.TryIsWindowViewActive(winType, out var isActive) && isActive)
+                {
+                    return env;
+                }
+            }
             return null;
         }
 
         private bool IsEnvironmentActive(EnvironmentType env)
         {
-            try { var dict = SaveDataManager.Instance.WindowViewDic; var winType = (WindowViewType)Enum.Parse(typeof(WindowViewType), env.ToString()); if (dict.ContainsKey(winType)) return dict[winType].IsActive; } catch { }
+            var winType = (WindowViewType)Enum.Parse(typeof(WindowViewType), env.ToString());
+            if (WindowViewStateAccessor.TryIsWindowViewActive(winType, out var isActive))
+            {
+                return isActive;
+            }
             return false;
         }
 

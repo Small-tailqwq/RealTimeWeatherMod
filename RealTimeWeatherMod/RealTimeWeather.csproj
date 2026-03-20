@@ -102,6 +102,7 @@
     <Compile Include="Services\KeySecurity.cs" />
     <Compile Include="Services\WeatherService.cs" />
     <Compile Include="Utils\EnvRegistry.cs" />
+    <Compile Include="Utils\WindowViewStateAccessor.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
