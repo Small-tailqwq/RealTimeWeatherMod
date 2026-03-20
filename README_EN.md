@@ -20,7 +20,7 @@ A BepInEx plugin for the game *Chill with You - Lo-Fi Story*. It automatically s
 
 ---
 
-[![Chill with You](./header_schinese.jpg)](https://store.steampowered.com/app/3548580/)
+[![Chill with You](https://raw.githubusercontent.com/Small-tailqwq/RealTimeWeatherMod/refs/heads/master/header_schinese.jpg)](https://store.steampowered.com/app/3548580/)
 
 > "Chill with You: Lo-Fi Story" is a visual novel game where you work alongside Satone, a girl who loves writing stories. You can customize original music by artists, ambient sounds, and scenery to create an environment focused on work. As your relationship with Satone deepens, you may discover a special connection with her.
 
