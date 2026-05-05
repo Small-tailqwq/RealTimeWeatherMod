@@ -99,6 +99,7 @@
     <Compile Include="Patches\ModSettingsIntegration.cs" />
     <Compile Include="Patches\UnlockConditionGodMode.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Services\DecorationUnlockScanner.cs" />
     <Compile Include="Services\KeySecurity.cs" />
     <Compile Include="Services\WeatherService.cs" />
     <Compile Include="Utils\EnvRegistry.cs" />

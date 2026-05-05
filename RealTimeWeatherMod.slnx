@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="RealTimeWeatherMod/RealTimeWeather.csproj" Id="426b3167-5474-4b37-941d-a32b8cf29351" />
+  <Project Path="RealTimeWeatherMod.Tests/RealTimeWeatherMod.Tests.csproj" Id="c7a5f6c2-8d77-4cf5-8d1a-362d8d6b9a9a" />
 </Solution>
