@@ -160,6 +160,66 @@ UniTask.dll            — 异步任务库
 Unity.TextMeshPro.dll  — 文本渲染
 ```
 
+### 5.6 EnvironmentType ↔ 游戏 UI 名称对照
+
+**基底时段（4 个，影响光照/时间/WindowViewType）**
+
+| EnvironmentType | WindowViewType | LocalizeKey | 游戏 UI 名称（推测） | 说明 |
+|----------------|---------------|-------------|-------------------|------|
+| `Day` | `WindowViewType.Day` | `ui_guide_enviroment_day` | 白天/日中 | 基础日间时段 |
+| `Sunset` | `WindowViewType.Sunset` | `ui_guide_enviroment_sunset` | 黄昏/日没 | 日落时段，30 分钟窗口 |
+| `Night` | `WindowViewType.Night` | `ui_guide_enviroment_night` | 夜晚/夜 | 夜间时段 |
+| `Cloudy` | `WindowViewType.Cloudy` | `ui_guide_enviroment_cloudy` | 阴天/曇り | 坏天气时的基底 |
+
+**降水窗景（4 个，依附于基底时段之上）**
+
+| EnvironmentType | LocalizeKey | 游戏 UI 名称（运行时读取） | 心知天气 Code | 说明 |
+|----------------|-------------|------------------------|---------------|------|
+| `LightRain` | `ui_enviroment_lightrain_01` | 小雨 | 13, 19 | 小雨/细雨，需解锁 |
+| `HeavyRain` | `ui_enviroment_heavyrain_01` | 雨 | 10, 14, 15 | 大雨，需解锁 |
+| `ThunderRain` | `ui_enviroment_rainthunder_01` | 雷雨 | 11, 12, 16~18 | 雷雨，需解锁 |
+| `Snow` | `ui_enviroment_snow_01` | 雪 | 20~25 | 下雪，需解锁 |
+
+**彩蛋窗景（33 个，纯装饰/音效）**
+
+| EnvironmentType | LocalizeKey | 说明 |
+|----------------|-------------|------|
+| `Fireworks` | `ui_enviroment_fireworks_01` | 烟花 |
+| `DeepSea` | `ui_enviroment_deepsea_01` | 深海 |
+| `Books` | `ui_enviroment_book_01` | 魔法书/书房 |
+| `WindBell` | `ui_enviroment_windbell_01` | 风铃 |
+| `Sakura` | `ui_enviroment_sakura_01` | 樱花 |
+| `Jet` | `ui_enviroment_jet_01` | 喷气机 |
+| `Balloon` | `ui_enviroment_balloon_01` | 热气球 |
+| `Whale` | `ui_enviroment_whales_01` | 鲸鱼 |
+| `HotSpring` | `ui_enviroment_hotspring_01` | 温泉 |
+| `Space` | `ui_enviroment_universe_01` | 宇宙 |
+| `Locomotive` | `ui_enviroment_locomotive_01` | 火车 |
+| `RadioNoise` | `ui_enviroment_radionoise_01` | 收音机噪音 |
+| `PinkNoise` | `ui_enviroment_pinknoise_01` | 粉红噪音 |
+| `RecordNoise` | `ui_enviroment_recordnoise_01` | 唱片噪音 |
+| `Wind` | `ui_enviroment_wind_01` | 风声 |
+| `CookSimmer` | `ui_enviroment_cook_01` | 煮东西 |
+| `Crickets` | `ui_enviroment_crickets_01` | 蟋蟀 |
+| `Frog1` | `ui_enviroment_frog_01` | 青蛙 1 |
+| `Frog2` | `ui_enviroment_frog_02` | 青蛙 2 |
+| `Chicada` | `ui_enviroment_chicada_01` | 蝉 |
+| `Higurashi` | `ui_enviroment_higurashi_01` | 蜩（暮蝉） |
+| `TurtleDove` | `ui_enviroment_turtledove_01` | 斑鸠 |
+| `BirdChorus` | `ui_enviroment_birdchorus_01` | 鸟鸣 |
+| `Sea` | — | 海 |
+| `RoomNoise` | — | 空调/房间噪音 |
+| `BlueButterfly` | `ui_enviroment_alterego_01` | 蓝蝶 |
+| `CookTypeB` | — | 做饭 B 型 |
+| `City` | `ui_enviroment_city_01` | 城市 |
+| `Jellyfish` | — | 水母 |
+| `Fireplace` | — | 壁炉 |
+| `ValentineSweets` | — | 情人节糖果 |
+| `Aurora` | — | 极光 |
+| `Brook` | — | 小溪 |
+
+> **注意**：实际游戏 UI 名称由 LocalizeKey 经本地化表渲染，需在游戏中用 MCP 工具 `search_elements` 或 `inspect_element` 查看 `TMP_Text.text` 获取确切中文字符串。解锁环境请确认 `UnlockAllEnvironments = true`。`EnvironmentType.LightRain` 与游戏内"小雨"按钮对应，"雨"是 `HeavyRain`，"雷雨"是 `ThunderRain`。
+
 ## 六、核心数据流
 
 ### 6.1 天气同步流
