@@ -297,6 +297,14 @@ RefreshMinutes = 30
 - 暂时没有做其它修改，不知道是否还有其他 bug
 - 后续会针对新更新的内容同步更新 mod，但暂时还不是现在
 
+### v5.2.0-你管这叫MCP？
+- 新增 UnityExplorer MCP Bridge 插件，AI 可直接读取游戏运行时 UI 布局
+  - 8 个 MCP 工具：get_ui_hierarchy / inspect_element / search_elements / execute_code / take_screenshot 等
+  - HTTP+SSE 传输，监听 localhost:8972
+- 修复了 ApplyBaseEnvironment 跳过 ChangeTime 导致光照不切换的问题
+- 版本号统一管理：改为 `ChillEnvPlugin.PluginVersion` 单源配置
+- 完善了环境类型中文名对照表（MCP 实时读取游戏内按钮文本验证）
+
 ### v5.1.3-最后的两月
 - 修复了由于游戏修正单词导致的 UI 层显示内容无法正确 hook 问题
 - 修复了由于游戏更新时间调整方法导致时间切换不生效问题

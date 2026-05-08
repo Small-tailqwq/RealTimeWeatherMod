@@ -1,4 +1,17 @@
 > 注：版本号为 AI 自己写的，不关我的事，我也不知道为啥它刷版本号为什么这么随意
+> 
+> 从 v5.2.0 起版本集中管理于 `ChillEnvPlugin.PluginVersion`，不再散落在各个文件中。
+
+### v5.2.0-你管这叫MCP？
+
+- 新增 UnityExplorer MCP Bridge 插件，AI 可直接读取游戏运行时 UI 布局
+  - 8 个 MCP 工具：get_ui_hierarchy / inspect_element / search_elements / get_mouse_element / execute_code / get_console_logs / take_screenshot / list_scenes
+  - 通过 Reflection.Emit 动态创建 InteractiveBase 派生类绕过 Mono.CSharp accessibility 限制
+  - HTTP+SSE 传输，监听 localhost:8972
+- 修复了 ApplyBaseEnvironment 在环境已激活时跳过 ChangeTime 导致光照不切换的问题
+- 添加了装饰品解锁扫描器（DecorationUnlockScanner），缓存访问器提升性能
+- 版本号统一管理：从各处硬编码改为 `ChillEnvPlugin.PluginVersion` 单源配置
+- 完善了 AGENTS.md 环境类型中文名对照表（通过 MCP 实时读取游戏内按钮文本验证）
 
 ### v5.1.3-最后的两月
 

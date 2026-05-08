@@ -6,7 +6,7 @@
 |------|-----|
 | 项目名 | Chill Env Sync (RealTimeWeatherMod) |
 | 类型 | BepInEx 插件 (.NET Framework 4.7.2) |
-| 版本 | 5.1.3 |
+| 版本 | 5.2.0 |
 | BepInEx GUID | `chillwithyou.envsync` |
 | 目标游戏 | 《Chill with You: Lo-Fi Story》(Steam) |
 | 游戏路径 | `D:\SteamLibrary\steamapps\common\Chill with You Lo-Fi Story` |

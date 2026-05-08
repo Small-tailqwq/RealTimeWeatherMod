@@ -99,7 +99,7 @@ namespace ChillWithYou.EnvSync.Patches
                 var regMethod = managerType.GetMethod("RegisterMod", new Type[] { typeof(string), typeof(string) });
                 if (regMethod != null)
                 {
-                    regMethod.Invoke(managerInstance, new object[] { "Chill Env Sync", "5.1.3" });
+                    regMethod.Invoke(managerInstance, new object[] { "Chill Env Sync", ChillEnvPlugin.PluginVersion });
                 }
 
                 // =========================================================

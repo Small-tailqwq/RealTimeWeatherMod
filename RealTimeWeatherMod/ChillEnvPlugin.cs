@@ -9,9 +9,11 @@ using Bulbul;
 
 namespace ChillWithYou.EnvSync
 {
-  [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "5.1.3")]
+  [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "5.2.0")]
   public class ChillEnvPlugin : BaseUnityPlugin
   {
+    internal const string PluginVersion = "5.2.0";
+
     internal static ChillEnvPlugin Instance;
     internal static ManualLogSource Log;
     internal static UnlockItemService UnlockItemServiceInstance;
@@ -55,7 +57,7 @@ namespace ChillWithYou.EnvSync
       Instance = this;
       Log = Logger;
 
-      Log.LogWarning("【5.1.3】启动 - 解锁调试版");
+      Log.LogWarning($"【{PluginVersion}】启动 - 解锁调试版");
 
       try
       {
