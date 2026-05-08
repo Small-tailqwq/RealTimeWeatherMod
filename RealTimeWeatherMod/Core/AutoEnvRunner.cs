@@ -279,9 +279,15 @@ namespace ChillWithYou.EnvSync.Core
 
         private void ApplyBaseEnvironment(EnvironmentType target, bool force)
         {
-            if (!force && IsEnvironmentActive(target)) return;
-            foreach (var env in BaseEnvironments) if (env != target && IsEnvironmentActive(env)) SimulateClick(env);
-            if (!IsEnvironmentActive(target)) SimulateClick(target);
+            // 只在需要切换时才执行 SimulateClick（关闭旧环境、开启新环境）
+            if (force || !IsEnvironmentActive(target))
+            {
+                foreach (var env in BaseEnvironments) if (env != target && IsEnvironmentActive(env)) SimulateClick(env);
+                if (!IsEnvironmentActive(target)) SimulateClick(target);
+            }
+
+            // 始终走 ChangeTime 全管线：烘焙光照贴图 + CozyWeather + GameObjects + 存档
+            // 修复：之前 IsEnvironmentActive 提前返回会跳过此调用，导致光照与实际环境不一致
             ChillEnvPlugin.CallServiceChangeWeather(target);
             ChillEnvPlugin.Log?.LogInfo($"[环境] 切换至: {target}");
         }

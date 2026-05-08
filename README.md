@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Framework 4.7.2](https://img.shields.io/badge/.NET%20Framework-4.7.2-blue.svg)](https://dotnet.microsoft.com/download/dotnet-framework/net472)
 [![BepInEx](https://img.shields.io/badge/BepInEx-Plugin-green.svg)](https://github.com/BepInEx/BepInEx)
+[![opencode](https://github.com/anomalyco/opencode/raw/dev/packages/console/app/src/asset/logo-ornate-dark.svg)](https://github.com/anomalyco/opencode)
+
 
 一个用于游戏 《*放松时光：与你共享Lo-Fi故事*》 的实时天气同步 BepInEx 插件，可以根据真实世界的天气情况自动调整游戏内的环境效果，或基于现实时间模拟昼夜循环。
 
@@ -88,8 +90,8 @@
 - [x] 根据时间、季节等因素自动触发背景音乐
 - [x] 代码重构，拆分为多个子模块，方便后续 AI 维护
 - [x] 应付将来的游戏更新（成功活到了 ver1.1）
-- [ ] 永远都修不够的 BUG
-- [ ] 抽空在土豆模式中对 todo、note 等功能进行优化
+- [x] 永远都修不够的 BUG
+- [x] 抽空在土豆模式中对 todo、note 等功能进行优化
 
 
 ## 📦 安装方法
