@@ -19,7 +19,24 @@
 - 类型：`feat`(功能)、`fix`(修复)、`refactor`(重构)、`docs`(文档)、`test`(测试)、`chore`(杂项)
 - 用简短的一句话描述变更目的，而非做了什么
 
-## 三、大架构（三层模型）
+## 三、AI 工作流规范
+
+### 3.1 MCP 工具不足时的 fallback
+
+当 MCP 工具集不提供所需功能时，不要尝试通用方案（安装 CLI、猜 API 参数等），而是：
+
+1. **检查已安装的本地资源** — 查看对应 MCP 服务器目录的辅助脚本/文档（如 `C:\Users\Ko_teiru\bin\github-mcp-server\` 下有 `read-credential.ps1`、`store-credential.ps1`）
+2. **直接调用 REST API** — 用辅助脚本获取认证凭据后，通过 `Invoke-RestMethod` / `curl` 调原生 API
+3. **优先利用本地已有工具链**，而非引入新依赖
+
+### 3.2 遇到阻滞时的排查优先级
+
+1. 读相关配置文件（`.json`、`.env`、`AGENTS.md`）
+2. 检查相关目录的文件列表
+3. 搜索已知脚本/辅助工具
+4. 最后才考虑安装新软件
+
+## 四、大架构（三层模型）
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -72,7 +89,7 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
-## 四、源码文件全景
+## 五、源码文件全景
 
 ```
 RealTimeWeatherMod/
@@ -97,7 +114,7 @@ RealTimeWeatherMod/
     └── AssemblyInfo.cs        — 程序集信息 (33行)
 ```
 
-## 五、游戏关键类型映射（来自反编译 Assembly-CSharp.dll）
+## 六、游戏关键类型映射（来自反编译 Assembly-CSharp.dll）
 
 ### 5.1 命名空间架构
 
@@ -235,7 +252,7 @@ Unity.TextMeshPro.dll  — 文本渲染
 > - 解锁环境请确认 `UnlockAllEnvironments = true`。
 > - `LightRain`="小雨"，`HeavyRain`="雨"，`ThunderRain`="雷雨"。
 
-## 六、核心数据流
+## 七、核心数据流
 
 ### 6.1 天气同步流
 
@@ -278,7 +295,7 @@ UnlockConditionService.IsPurchasableItem<T>()
   → [Harmony Prefix] 强制返回 false
 ```
 
-## 七、配置项清单
+## 八、配置项清单
 
 | 配置键 | 默认值 | 说明 |
 |-------|--------|------|
@@ -296,7 +313,7 @@ UnlockConditionService.IsPurchasableItem<T>()
 | Automation.EnableSeasonalEasterEggs | true | 启用彩蛋 |
 | Debug.EnableDebugMode | false | 调试模式 |
 
-## 八、外部依赖
+## 九、外部依赖
 
 - **心知天气 API** (seniverse.com) — 实时天气 + 日出日落数据
 - **BepInEx 5.4.x** — Unity 游戏 Mod 加载器
@@ -305,7 +322,7 @@ UnlockConditionService.IsPurchasableItem<T>()
 - **R3** — 游戏自带的响应式编程库
 - **VContainer** — 游戏自带的 DI 容器
 
-## 九、开发注意事项
+## 十、开发注意事项
 
 1. **反射脆弱性**：大量使用反射（FieldInfo/MethodInfo），游戏更新可能导致字段名/路径变化
 2. **无存档写入**：解锁仅在当前会话生效，不修改存档(UnlockConditionGodMode 拦截)
@@ -315,7 +332,7 @@ UnlockConditionService.IsPurchasableItem<T>()
 6. **BepInEx 目录**：`BepInEx/plugins/RealTimeWeatherMod.dll`
 7. **预埋 API Key**：`KeySecurity.cs` 内置 AES 加密的默认 Key（防滥用）
 
-## 十、游戏已安装的 MOD
+## 十一、游戏已安装的 MOD
 
 ```
 D:\SteamLibrary\...\BepInEx\plugins\
@@ -325,7 +342,7 @@ D:\SteamLibrary\...\BepInEx\plugins\
   └── UnityExplorerMcp.dll         ← UnityExplorer MCP Bridge
 ```
 
-## 十一、UnityExplorer MCP Bridge
+## 十二、UnityExplorer MCP Bridge
 
 | 字段 | 值 |
 |------|-----|
