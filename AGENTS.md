@@ -180,45 +180,60 @@ Unity.TextMeshPro.dll  — 文本渲染
 | `ThunderRain` | `ui_enviroment_rainthunder_01` | 雷雨 | 11, 12, 16~18 | 雷雨，需解锁 |
 | `Snow` | `ui_enviroment_snow_01` | 雪 | 20~25 | 下雪，需解锁 |
 
-**彩蛋窗景（33 个，纯装饰/音效）**
+**窗景类彩蛋（GridLayout，分类标题 1，视觉为主）**
 
-| EnvironmentType | LocalizeKey | 说明 |
-|----------------|-------------|------|
-| `Fireworks` | `ui_enviroment_fireworks_01` | 烟花 |
-| `DeepSea` | `ui_enviroment_deepsea_01` | 深海 |
-| `Books` | `ui_enviroment_book_01` | 魔法书/书房 |
-| `WindBell` | `ui_enviroment_windbell_01` | 风铃 |
-| `Sakura` | `ui_enviroment_sakura_01` | 樱花 |
-| `Jet` | `ui_enviroment_jet_01` | 喷气机 |
-| `Balloon` | `ui_enviroment_balloon_01` | 热气球 |
-| `Whale` | `ui_enviroment_whales_01` | 鲸鱼 |
-| `HotSpring` | `ui_enviroment_hotspring_01` | 温泉 |
-| `Space` | `ui_enviroment_universe_01` | 宇宙 |
-| `Locomotive` | `ui_enviroment_locomotive_01` | 火车 |
-| `RadioNoise` | `ui_enviroment_radionoise_01` | 收音机噪音 |
-| `PinkNoise` | `ui_enviroment_pinknoise_01` | 粉红噪音 |
-| `RecordNoise` | `ui_enviroment_recordnoise_01` | 唱片噪音 |
-| `Wind` | `ui_enviroment_wind_01` | 风声 |
-| `CookSimmer` | `ui_enviroment_cook_01` | 煮东西 |
-| `Crickets` | `ui_enviroment_crickets_01` | 蟋蟀 |
-| `Frog1` | `ui_enviroment_frog_01` | 青蛙 1 |
-| `Frog2` | `ui_enviroment_frog_02` | 青蛙 2 |
-| `Chicada` | `ui_enviroment_chicada_01` | 蝉 |
-| `Higurashi` | `ui_enviroment_higurashi_01` | 蜩（暮蝉） |
-| `TurtleDove` | `ui_enviroment_turtledove_01` | 斑鸠 |
-| `BirdChorus` | `ui_enviroment_birdchorus_01` | 鸟鸣 |
-| `Sea` | — | 海 |
-| `RoomNoise` | — | 空调/房间噪音 |
-| `BlueButterfly` | `ui_enviroment_alterego_01` | 蓝蝶 |
-| `CookTypeB` | — | 做饭 B 型 |
-| `City` | `ui_enviroment_city_01` | 城市 |
-| `Jellyfish` | — | 水母 |
-| `Fireplace` | — | 壁炉 |
-| `ValentineSweets` | — | 情人节糖果 |
-| `Aurora` | — | 极光 |
-| `Brook` | — | 小溪 |
+| EnvironmentType | LocalizeKey | 游戏 UI 名称 | 说明 |
+|----------------|-------------|-------------|------|
+| `Fireworks` | `ui_enviroment_fireworks_01` | 烟花 | 烟花绽放 |
+| `DeepSea` | `ui_enviroment_deepsea_01` | 深海 | 深海潜水 |
+| `Jellyfish` | `ui_enviroment_jellyfish_01` | 水母 | 水母游动 |
+| `Whale` | `ui_enviroment_whales_01` | 鲸鱼 | 鲸鱼遨游 |
+| `HotSpring` | `ui_enviroment_hotspring_01` | 温泉 | 温泉泡澡 |
+| `Locomotive` | `ui_enviroment_locomotive_01` | 蒸汽机车 | 火车 |
+| `City` | `ui_enviroment_city_01` | 城市 | 城市夜景 |
+| `WindBell` | `ui_enviroment_windbell_01` | 风铃 | 风铃摇曳 |
 
-> **注意**：实际游戏 UI 名称由 LocalizeKey 经本地化表渲染，需在游戏中用 MCP 工具 `search_elements` 或 `inspect_element` 查看 `TMP_Text.text` 获取确切中文字符串。解锁环境请确认 `UnlockAllEnvironments = true`。`EnvironmentType.LightRain` 与游戏内"小雨"按钮对应，"雨"是 `HeavyRain`，"雷雨"是 `ThunderRain`。
+**窗景类彩蛋（GridLayout (1)，分类标题 2，视觉为主）**
+
+| EnvironmentType | LocalizeKey | 游戏 UI 名称 | 说明 |
+|----------------|-------------|-------------|------|
+| `Sakura` | `ui_enviroment_sakura_01` | 樱花 | 樱花飘落 |
+| `Snow` | `ui_enviroment_snow_01` | 雪 | 雪花纷飞 |
+| `Aurora` | `ui_enviroment_aurora_01` | 极光 | 极光舞动 |
+| `Books` | `ui_enviroment_book_01` | 书 | 书房/魔法书 |
+| `Jet` | `ui_enviroment_jet_01` | 飞机 | 喷气机 |
+| `Balloon` | `ui_enviroment_balloon_01` | 热气球 | 热气球飞行 |
+| `Space` | `ui_enviroment_universe_01` | 宇宙 | 星空宇宙 |
+| `BlueButterfly` | `ui_enviroment_alterego_01` | 蓝色蝴蝶 | 蓝蝶 |
+| `ValentineSweets` | `ui_enviroment_valentineSweets_01` | 零食 | 情人节糖果 |
+
+**音效类彩蛋（GridLayout (2)，分类标题 3，纯音频）**
+
+| EnvironmentType | LocalizeKey | 游戏 UI 名称 | 说明 |
+|----------------|-------------|-------------|------|
+| `RadioNoise` | `ui_enviroment_radionoise_01` | 无线电噪声 | 收音机噪音 |
+| `PinkNoise` | `ui_enviroment_pinknoise_01` | 粉红噪声 | 粉红噪音 |
+| `RecordNoise` | `ui_enviroment_recordnoise_01` | 录音噪声 | 唱片噪音 |
+| `RoomNoise` | `ui_enviroment_roomnoise_01` | 空调 | 房间空调声 |
+| `Sea` | `ui_enviroment_seawave_01` | 波浪 | 海浪声 |
+| `Brook` | `ui_enviroment_brook_01` | 溪流 | 小溪流水 |
+| `Wind` | `ui_enviroment_wind_01` | 风 | 风声 |
+| `CookSimmer` | `ui_enviroment_cook_01` | 烹饪-A | 煮东西 A |
+| `CookTypeB` | `ui_enviroment_cook_02` | 烹饪-B | 煮东西 B |
+| `Fireplace` | `ui_enviroment_fireplace_01` | 壁炉 | 柴火燃烧 |
+| `Crickets` | `ui_enviroment_crickets_01` | 蟋蟀 | 蟋蟀叫 |
+| `Frog1` | `ui_enviroment_frog_01` | 青蛙的叫声 | 单只青蛙 |
+| `Frog2` | `ui_enviroment_frog_02` | 青蛙齐鸣 | 多只青蛙 |
+| `Chicada` | `ui_enviroment_chicada_01` | 蝉 | 蝉鸣 |
+| `Higurashi` | `ui_enviroment_higurashi_01` | 寒蝉 | 暮蝉 |
+| `TurtleDove` | `ui_enviroment_turtledove_01` | 山斑鸠 | 斑鸠 |
+| `BirdChorus` | `ui_enviroment_birdchorus_01` | 鸟儿齐鸣 | 鸟鸣合唱 |
+
+> **注意**：
+> - 实际游戏 UI 名称由 `inspect_element` 直接读取 `TMP_Text.text` 获取，确保与游戏内完全一致。
+> - `Sea` 在代码中对应 `EnvironmentType.Sea`，但游戏 UI 显示"波浪"而非"海"。
+> - 解锁环境请确认 `UnlockAllEnvironments = true`。
+> - `LightRain`="小雨"，`HeavyRain`="雨"，`ThunderRain`="雷雨"。
 
 ## 六、核心数据流
 
