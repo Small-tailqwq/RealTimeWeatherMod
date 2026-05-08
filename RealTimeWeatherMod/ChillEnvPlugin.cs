@@ -359,83 +359,21 @@ namespace ChillWithYou.EnvSync
     {
         if (svc == null) return;
 
-        Log?.LogInfo("☢️ 启动通用解锁核弹 v2 (钻地模式)...");
-        int totalUnlocked = 0;
+        Log?.LogInfo("☢️ 启动通用解锁核弹 v3 (定向模式)...");
 
         try
         {
-            // 1. 获取 Service 下的所有字段 (包括私有的 _conditionService, _environment, _decoration 等)
-            // 使用 Harmony 的 AccessTools.GetDeclaredFields 可以无视访问权限拿到所有字段
-            var serviceFields = AccessTools.GetDeclaredFields(svc.GetType());
+            int totalUnlocked = Services.DecorationUnlockScanner.Unlock(
+                svc,
+                message => Log?.LogInfo(message),
+                message => Log?.LogError(message),
+                Cfg_DebugMode.Value);
 
-            foreach (var field in serviceFields)
-            {
-                // 跳过一些明显不是目标的数据加载器，防止浪费时间或报错
-                if (field.FieldType.Name.Contains("MasterData") || field.FieldType.Name.Contains("Loader")) 
-                    continue;
-
-                // 获取字段的值 (例如 UnlockConditionService 实例)
-                object componentObj = field.GetValue(svc);
-                if (componentObj == null) continue;
-
-                // Log?.LogInfo($"👉 正在扫描组件: {field.Name} ({componentObj.GetType().Name})");
-
-                // 2. 深入扫描这个组件内部的所有字典
-                var subFields = AccessTools.GetDeclaredFields(componentObj.GetType());
-                
-                foreach (var subField in subFields)
-                {
-                    // 必须是字典类型
-                    if (!typeof(System.Collections.IDictionary).IsAssignableFrom(subField.FieldType)) continue;
-
-                    var dict = subField.GetValue(componentObj) as System.Collections.IDictionary;
-                    if (dict == null || dict.Count == 0) continue;
-
-                    int groupCount = 0;
-                    
-                    // 3. 遍历字典内容
-                    foreach (System.Collections.DictionaryEntry entry in dict)
-                    {
-                        var dataItem = entry.Value;
-                        if (dataItem == null) continue;
-
-                        // 4. 暴力查找 _isLocked 字段
-                        var lockField = AccessTools.Field(dataItem.GetType(), "_isLocked");
-                        if (lockField == null) continue;
-
-                        var reactiveBool = lockField.GetValue(dataItem);
-                        if (reactiveBool == null) continue;
-
-                        // R3/UniRx 的 ReactiveProperty.Value
-                        var valueProp = reactiveBool.GetType().GetProperty("Value");
-                        if (valueProp == null) continue;
-
-                        // 5. 执行解锁！
-                        bool isLocked = (bool)valueProp.GetValue(reactiveBool, null);
-                        if (isLocked)
-                        {
-                            valueProp.SetValue(reactiveBool, false, null);
-                            groupCount++;
-                            totalUnlocked++;
-                            if (Cfg_DebugMode.Value)
-                            {
-                                // 打印一下 Key，看看解锁了啥 (颜色变种通常 key 会很长或者是数字)
-                                Log?.LogInfo($"   🔓 解锁: {entry.Key} (在 {field.Name}.{subField.Name})");
-                            }
-                        }
-                    }
-
-                    if (groupCount > 0)
-                    {
-                        Log?.LogInfo($"✅ 在 {field.Name} -> {subField.Name} 中解锁了 {groupCount} 个项目");
-                    }
-                }
-            }
-            Log?.LogInfo($"🎉 核弹 v2 投放完毕，本次共解锁 {totalUnlocked} 个项目！");
+            Log?.LogInfo($"🎉 核弹 v3 投放完毕，本次共解锁 {totalUnlocked} 个项目！");
         }
         catch (Exception ex)
         {
-            Log?.LogError($"❌ 通用解锁 v2 失败: {ex}");
+            Log?.LogError($"❌ 通用解锁 v3 失败: {ex}");
         }
     }
   }
