@@ -17,14 +17,48 @@ namespace ChillWithYou.EnvSync.Services
         private static readonly string _encryptedDefaultKey = "7Mr4YSR87bFvE4zDgj6NbuBKgz4EiPYEnRTQ0RIaeSU=";
         public static bool HasDefaultKey => !string.IsNullOrEmpty(_encryptedDefaultKey);
 
+        private static string NormalizeLocation(string location)
+        {
+            return location?.Trim() ?? string.Empty;
+        }
+
+        private static bool HasValidCacheNormalized(string normalizedLocation)
+        {
+            return _cachedWeather != null &&
+                DateTime.Now - _lastFetchTime < CacheExpiry &&
+                string.Equals(_lastLocation, normalizedLocation, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool HasValidCache(string location)
+        {
+            return HasValidCacheNormalized(NormalizeLocation(location));
+        }
+
+        public static bool TryGetCacheRemainingSeconds(string location, out float seconds)
+        {
+            seconds = 0f;
+            string normalizedLocation = NormalizeLocation(location);
+            if (!HasValidCacheNormalized(normalizedLocation))
+            {
+                return false;
+            }
+
+            TimeSpan elapsed = DateTime.Now - _lastFetchTime;
+            TimeSpan remaining = CacheExpiry - elapsed;
+            if (remaining < TimeSpan.Zero)
+            {
+                remaining = TimeSpan.Zero;
+            }
+
+            seconds = (float)remaining.TotalSeconds;
+            return true;
+        }
+
         public static IEnumerator FetchWeather(string apiKey, string location, bool force, Action<WeatherInfo> onComplete)
         {
-            string normalizedLocation = location?.Trim() ?? "";
+            string normalizedLocation = NormalizeLocation(location);
 
-            if (!force && 
-                _cachedWeather != null && 
-                DateTime.Now - _lastFetchTime < CacheExpiry &&
-                string.Equals(_lastLocation, normalizedLocation, StringComparison.OrdinalIgnoreCase))
+            if (!force && HasValidCacheNormalized(normalizedLocation))
             {
                 onComplete?.Invoke(_cachedWeather);
                 yield break;

@@ -111,6 +111,7 @@ namespace ChillWithYou.EnvSync.Patches
                 {
                     // 参数：Key, English, Japanese, Chinese
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_ENABLE", "Weather Sync", "天気同期", "天气同步" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_TIME", "Time Sync", "時間同期", "时间同步" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_UI", "Show Weather on UI", "UIに天気を表示", "日期栏天气" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_DETAIL", "Detailed Segments", "詳細セグメント", "详细时段" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_EGG", "Easter Eggs", "イースターエッグ", "彩蛋" });
@@ -137,6 +138,20 @@ namespace ChillWithYou.EnvSync.Patches
                     allSuccess = false;
                 }
 
+                string labelTime = hasTranslation ? "ENV_SYNC_TIME" : "时间同步";
+                if (!AddToggleSafe(managerInstance, managerType,
+                    labelTime,
+                    ChillEnvPlugin.Cfg_EnableTimeSync.Value,
+                    (value) =>
+                    {
+                        ChillEnvPlugin.Cfg_EnableTimeSync.Value = value;
+                        ChillEnvPlugin.Instance.Config.Save();
+                        ChillEnvPlugin.Log?.LogInfo($"[设置] 时间同步已设置为: {value}");
+                    }))
+                {
+                    allSuccess = false;
+                }
+
                 // --- 开关示例：UI显示 ---
                 string labelUI = hasTranslation ? "ENV_SYNC_UI" : "日期栏天气";
                 AddToggleSafe(managerInstance, managerType,
@@ -145,6 +160,14 @@ namespace ChillWithYou.EnvSync.Patches
                     (value) =>
                     {
                         ChillEnvPlugin.Cfg_ShowWeatherOnUI.Value = value;
+                        if (!value)
+                        {
+                            ChillEnvPlugin.UIWeatherString = string.Empty;
+                        }
+                        else
+                        {
+                            Core.AutoEnvRunner.TriggerUiWeatherRefresh();
+                        }
                         ChillEnvPlugin.Instance.Config.Save();
                     });
 

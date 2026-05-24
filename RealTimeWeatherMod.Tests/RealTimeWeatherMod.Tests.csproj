@@ -17,5 +17,8 @@
 
   <ItemGroup>
     <Compile Include="..\RealTimeWeatherMod\Services\DecorationUnlockScanner.cs" Link="Services\DecorationUnlockScanner.cs" />
+    <Compile Include="..\RealTimeWeatherMod\Core\SyncPolicy.cs" Link="Core\SyncPolicy.cs" />
+    <Compile Include="..\RealTimeWeatherMod\Core\WeatherUiState.cs" Link="Core\WeatherUiState.cs" />
+    <Compile Include="..\RealTimeWeatherMod\Models\WeatherData.cs" Link="Models\WeatherData.cs" />
   </ItemGroup>
 </Project>

@@ -29,6 +29,7 @@ namespace ChillWithYou.EnvSync
     internal static ConfigEntry<string> Cfg_SunsetTime;
     internal static ConfigEntry<string> Cfg_SeniverseKey;
     internal static ConfigEntry<string> Cfg_Location;
+    internal static ConfigEntry<bool> Cfg_EnableTimeSync;
     internal static ConfigEntry<bool> Cfg_EnableWeatherSync;
     internal static ConfigEntry<bool> Cfg_UnlockEnvironments;
     internal static ConfigEntry<bool> Cfg_UnlockDecorations;
@@ -95,6 +96,7 @@ namespace ChillWithYou.EnvSync
       Cfg_WeatherRefreshMinutes = Config.Bind("WeatherSync", "RefreshMinutes", 30, "天气API刷新间隔(分钟)");
       Cfg_SunriseTime = Config.Bind("TimeConfig", "Sunrise", "06:30", "日出时间");
       Cfg_SunsetTime = Config.Bind("TimeConfig", "Sunset", "18:30", "日落时间");
+      Cfg_EnableTimeSync = Config.Bind("TimeSync", "EnableTimeSync", true, "是否启用时间同步");
 
       Cfg_EnableWeatherSync = Config.Bind("WeatherAPI", "EnableWeatherSync", false, "是否启用天气API同步");
       Cfg_SeniverseKey = Config.Bind("WeatherAPI", "SeniverseKey", "", "心知天气 API Key");
@@ -128,6 +130,9 @@ namespace ChillWithYou.EnvSync
 
       Initialized = true;
       Log?.LogInfo("初始化完成");
+
+      // 立即触发首次天气同步（等游戏就绪后自动执行）
+      Core.AutoEnvRunner.TriggerImmediateSync();
 
       // 如果启用了调试模式，延迟验证解锁状态
       if (Cfg_DebugMode.Value && Instance != null)
@@ -377,6 +382,49 @@ namespace ChillWithYou.EnvSync
         {
             Log?.LogError($"❌ 通用解锁 v3 失败: {ex}");
         }
+    }
+
+    internal static bool IsInCutscene()
+    {
+      try
+      {
+        RoomGameManager roomGM = GameObject.FindObjectOfType<RoomGameManager>();
+        if (roomGM == null)
+        {
+          var all = Resources.FindObjectsOfTypeAll<RoomGameManager>();
+          if (all == null || all.Length == 0) return false;
+          roomGM = all[0];
+        }
+
+        if (roomGM == null) return false;
+
+        var prop = typeof(RoomGameManager).GetProperty("CurrentMainState",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (prop == null) return false;
+
+        object stateObj = prop.GetValue(roomGM, null);
+        if (stateObj == null) return false;
+
+        int state;
+        if (stateObj is int)
+        {
+          state = (int)stateObj;
+        }
+        else if (stateObj.GetType().IsEnum)
+        {
+          state = Convert.ToInt32(stateObj);
+        }
+        else if (!int.TryParse(stateObj.ToString(), out state))
+        {
+          return false;
+        }
+
+        return state != 14;
+      }
+      catch
+      {
+        return false;
+      }
     }
   }
 }

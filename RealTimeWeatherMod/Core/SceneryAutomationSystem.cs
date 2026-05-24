@@ -426,6 +426,9 @@ namespace ChillWithYou.EnvSync.Core
 
     private void RunAutomationLogic()
     {
+      // 剧情保护：剧情中跳过所有彩蛋自动切换
+      if (ChillEnvPlugin.IsInCutscene()) return;
+
       if (IsEnvActive(Env_DeepSea))
       {
         CleanupAllAutoMods();
