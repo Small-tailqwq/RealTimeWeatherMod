@@ -9,10 +9,10 @@ using Bulbul;
 
 namespace ChillWithYou.EnvSync
 {
-  [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", "5.2.0")]
+  [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", PluginVersion)]
   public class ChillEnvPlugin : BaseUnityPlugin
   {
-    internal const string PluginVersion = "5.2.0";
+    internal const string PluginVersion = "5.2.1";
 
     internal static ChillEnvPlugin Instance;
     internal static ManualLogSource Log;
