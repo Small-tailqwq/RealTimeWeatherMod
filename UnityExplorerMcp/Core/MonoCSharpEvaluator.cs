@@ -117,6 +117,7 @@ namespace UnityExplorerMcp.Core
                     _runMethod.Invoke(_eval, new object[] { "using UnityEngine;" });
                     _runMethod.Invoke(_eval, new object[] { "using UnityEngine.UI;" });
                     _runMethod.Invoke(_eval, new object[] { "using UnityEngine.EventSystems;" });
+                    _runMethod.Invoke(_eval, new object[] { "using TMPro;" });
                 }
 
                 _ready = true;
