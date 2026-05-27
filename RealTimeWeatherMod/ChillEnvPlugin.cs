@@ -223,19 +223,15 @@ namespace ChillWithYou.EnvSync
         // ---------------------------------------------------------
         MonoBehaviour targetUI = null;
         
-        // 我们不需要缓存 targetUI，因为 UI 可能会被销毁或重载，每次动态找最稳
         Type uiType = AccessTools.TypeByName("Bulbul.EnvironmentUI");
         if (uiType != null)
         {
-            // 暴力查找所有 EnvironmentUI (包括隐藏的)
             var allUIs = UnityEngine.Resources.FindObjectsOfTypeAll(uiType);
             if (allUIs != null && allUIs.Length > 0)
             {
-                // 优先找场景里的
                 foreach (var obj in allUIs)
                 {
                     var mono = obj as MonoBehaviour;
-                    // 过滤掉 Asset 资源，只找 Scene 里的对象
                     if (mono != null && mono.gameObject.scene.rootCount != 0)
                     {
                         targetUI = mono;
@@ -247,45 +243,38 @@ namespace ChillWithYou.EnvSync
 
         if (targetUI == null)
         {
-            // 如果连 UI 都找不到，说明可能在主菜单或者加载中，直接跳过
             return;
         }
 
         // ---------------------------------------------------------
-        // 第二阶段：调用 EnvironmentUI.ChangeTime
+        // 第二阶段：调用 EnvironmentUI.OnClickButtonChangeTime
+        // 这个 public 方法会：检查锁定状态、关闭 auto（如开启）、跳过已激活的目标
+        // 最后调用内部 ChangeTime 执行实际切换
         // ---------------------------------------------------------
         try
         {
-            // 目标方法：private void ChangeTime(EnvironmentType environmentType)
-            // 这个方法是私有的，而且它会自动处理 SaveData 的更新，完美解决死循环
-            var changeTimeMethod = AccessTools.Method(targetUI.GetType(), "ChangeTime");
+            var method = AccessTools.Method(targetUI.GetType(), "OnClickButtonChangeTime");
 
-            if (changeTimeMethod != null)
+            if (method != null)
             {
-                var parameters = changeTimeMethod.GetParameters();
+                var parameters = method.GetParameters();
                 if (parameters.Length > 0)
                 {
-                    // 获取目标方法的枚举类型 (Bulbul.EnvironmentType)
                     Type targetEnumType = parameters[0].ParameterType;
-                    
-                    // 将我们的 envType 转为目标枚举
                     object enumValue = Enum.Parse(targetEnumType, envType.ToString());
-
-                    // 执行调用
-                    changeTimeMethod.Invoke(targetUI, new object[] { enumValue });
+                    method.Invoke(targetUI, new object[] { enumValue });
                     
-                    // 成功日志
-                    Log?.LogInfo($"[Service] 🌧️ 天气已切换并同步状态: {envType}");
+                    Log?.LogInfo($"[Service] 环境已切换: {envType}");
                 }
             }
             else
             {
-                Log?.LogError("[Service] ❌ 找不到 ChangeTime 方法，游戏版本可能不匹配");
+                Log?.LogError("[Service] ❌ 找不到 OnClickButtonChangeTime 方法，游戏版本可能不匹配");
             }
         }
         catch (Exception ex)
         {
-            Log?.LogError($"[Service] ❌ 调用 ChangeTime 失败: {ex.Message}");
+            Log?.LogError($"[Service] ❌ 调用 OnClickButtonChangeTime 失败: {ex.Message}");
         }
     }
 
@@ -299,9 +288,15 @@ namespace ChillWithYou.EnvSync
         if (clickMethod != null)
         {
           Patches.UserInteractionPatch.IsSimulatingClick = true;
-          clickMethod.Invoke(ctrl, null);
-          Patches.UserInteractionPatch.IsSimulatingClick = false;
-          Log?.LogInfo($"[SimulateClick] 点击调用完成: {ctrl.name}");
+          try
+          {
+            clickMethod.Invoke(ctrl, null);
+            Log?.LogInfo($"[SimulateClick] 点击调用完成: {ctrl.name}");
+          }
+          finally
+          {
+            Patches.UserInteractionPatch.IsSimulatingClick = false;
+          }
         }
         else
         {

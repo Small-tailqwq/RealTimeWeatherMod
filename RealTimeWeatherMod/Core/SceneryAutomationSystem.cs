@@ -12,6 +12,8 @@ namespace ChillWithYou.EnvSync.Core
   {
     internal static HashSet<EnvironmentType> _autoEnabledMods = new HashSet<EnvironmentType>();
     public static HashSet<EnvironmentType> UserInteractedMods = new HashSet<EnvironmentType>();
+    internal static bool IsSystemOperation = false;
+    internal static float InitializationTime;
 
     // --- 核心修复：点击冷却 + 延迟验证 ---
     private Dictionary<EnvironmentType, float> _lastClickTime = new Dictionary<EnvironmentType, float>();
@@ -73,6 +75,7 @@ namespace ChillWithYou.EnvSync.Core
 
     private void Start()
     {
+      InitializationTime = Time.realtimeSinceStartup;
       InitializeRules();
     }
 
@@ -472,79 +475,110 @@ namespace ChillWithYou.EnvSync.Core
           EnableMod(rule.Name, rule.EnvType);
         }
       }
+
+      // Step 3: 孤儿环境检测 — 发现条件不满足但仍在播放的环境并自动关闭
+      // 解决追踪丢失后声音永不停止的问题
+      foreach (var rule in _rules)
+      {
+        if (UserInteractedMods.Contains(rule.EnvType)) continue;
+        if (_autoEnabledMods.Contains(rule.EnvType)) continue;
+        if (_pendingActions.ContainsKey(rule.EnvType)) continue;
+
+        if (!IsEnvActive(rule.EnvType)) continue;
+        if (rule.Condition()) continue;
+
+        ChillEnvPlugin.Log?.LogWarning($"[孤儿检测] 发现 {rule.Name} 不应播放但处于激活状态，强制关闭");
+        DisableMod(rule.Name, rule.EnvType);
+      }
     }
 
     private void EnableMod(string ruleName, EnvironmentType env)
     {
-      // 1. 冷却检查
-      if (_lastClickTime.TryGetValue(env, out float lastTime))
+      IsSystemOperation = true;
+      try
       {
-        if (Time.time - lastTime < ClickCooldown)
+        // 1. 冷却检查
+        if (_lastClickTime.TryGetValue(env, out float lastTime))
         {
-          return; // 冷却中
+          if (Time.time - lastTime < ClickCooldown)
+          {
+            return; // 冷却中
+          }
+        }
+
+        // 2. 再次确认当前状态
+        if (IsEnvActive(env))
+        {
+          // 已经是开启状态，直接加入托管列表
+          _autoEnabledMods.Add(env);
+          ChillEnvPlugin.Log?.LogInfo($"[自动托管] ↻ 已是开启状态: {ruleName}");
+          return;
+        }
+
+        // 3. 执行点击
+        if (EnvRegistry.TryGet(env, out var ctrl))
+        {
+          ChillEnvPlugin.Log?.LogInfo($"[自动托管] → 点击开启: {ruleName}");
+          ChillEnvPlugin.SimulateClickMainIcon(ctrl);
+          _lastClickTime[env] = Time.time;
+
+          // 4. 登记延迟验证任务
+          _pendingActions[env] = new PendingAction
+          {
+            TargetState = true,
+            VerifyTime = Time.time + VerifyDelay,
+            RuleName = ruleName
+          };
         }
       }
-
-      // 2. 再次确认当前状态
-      if (IsEnvActive(env))
+      finally
       {
-        // 已经是开启状态，直接加入托管列表
-        _autoEnabledMods.Add(env);
-        ChillEnvPlugin.Log?.LogInfo($"[自动托管] ↻ 已是开启状态: {ruleName}");
-        return;
-      }
-
-      // 3. 执行点击
-      if (EnvRegistry.TryGet(env, out var ctrl))
-      {
-        ChillEnvPlugin.Log?.LogInfo($"[自动托管] → 点击开启: {ruleName}");
-        ChillEnvPlugin.SimulateClickMainIcon(ctrl);
-        _lastClickTime[env] = Time.time;
-
-        // 4. 登记延迟验证任务
-        _pendingActions[env] = new PendingAction
-        {
-          TargetState = true,
-          VerifyTime = Time.time + VerifyDelay,
-          RuleName = ruleName
-        };
+        IsSystemOperation = false;
       }
     }
 
     private void DisableMod(string ruleName, EnvironmentType env)
     {
-      // 1. 冷却检查
-      if (_lastClickTime.TryGetValue(env, out float lastTime))
+      IsSystemOperation = true;
+      try
       {
-        if (Time.time - lastTime < ClickCooldown)
+        // 1. 冷却检查
+        if (_lastClickTime.TryGetValue(env, out float lastTime))
         {
+          if (Time.time - lastTime < ClickCooldown)
+          {
+            return;
+          }
+        }
+
+        // 2. 再次确认当前状态
+        if (!IsEnvActive(env))
+        {
+          // 已经是关闭状态
+          _autoEnabledMods.Remove(env);
+          ChillEnvPlugin.Log?.LogInfo($"[自动托管] ↻ 已是关闭状态: {ruleName}");
           return;
         }
-      }
 
-      // 2. 再次确认当前状态
-      if (!IsEnvActive(env))
-      {
-        // 已经是关闭状态
-        _autoEnabledMods.Remove(env);
-        ChillEnvPlugin.Log?.LogInfo($"[自动托管] ↻ 已是关闭状态: {ruleName}");
-        return;
-      }
-
-      // 3. 执行点击
-      if (EnvRegistry.TryGet(env, out var ctrl))
-      {
-        ChillEnvPlugin.Log?.LogInfo($"[自动托管] → 点击关闭: {ruleName}");
-        ChillEnvPlugin.SimulateClickMainIcon(ctrl);
-        _lastClickTime[env] = Time.time;
-
-        // 4. 登记延迟验证任务
-        _pendingActions[env] = new PendingAction
+        // 3. 执行点击
+        if (EnvRegistry.TryGet(env, out var ctrl))
         {
-          TargetState = false,
-          VerifyTime = Time.time + VerifyDelay,
-          RuleName = ruleName
-        };
+          ChillEnvPlugin.Log?.LogInfo($"[自动托管] → 点击关闭: {ruleName}");
+          ChillEnvPlugin.SimulateClickMainIcon(ctrl);
+          _lastClickTime[env] = Time.time;
+
+          // 4. 登记延迟验证任务
+          _pendingActions[env] = new PendingAction
+          {
+            TargetState = false,
+            VerifyTime = Time.time + VerifyDelay,
+            RuleName = ruleName
+          };
+        }
+      }
+      finally
+      {
+        IsSystemOperation = false;
       }
     }
 
@@ -609,6 +643,7 @@ namespace ChillWithYou.EnvSync.Core
           var ambientBehavior = ambientBehaviorField.GetValue(ctrl);
           if (ambientBehavior != null)
           {
+            // 优先检测 _volumeSlider.value
             var sliderField = ambientBehavior.GetType().GetField("_volumeSlider",
               BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             
@@ -630,7 +665,21 @@ namespace ChillWithYou.EnvSync.Core
                 }
               }
             }
+
+            // 兜底：如果滑块检测失败，检查 ambientBehavior 自身的 active 状态
+            var behaviorActiveProp = ambientBehavior.GetType().GetProperty("IsActive",
+              BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (behaviorActiveProp != null)
+              return (bool)behaviorActiveProp.GetValue(ambientBehavior);
+
+            var behaviorActiveField = ambientBehavior.GetType().GetField("_isActive",
+              BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (behaviorActiveField != null)
+              return (bool)behaviorActiveField.GetValue(ambientBehavior);
           }
+
+          // _ambientSoundBehavior 字段存在但无法读取 → 保守返回 false
+          return false;
         }
 
         // --- 窗景：检查 IsActive ---

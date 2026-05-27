@@ -663,22 +663,9 @@ namespace ChillWithYou.EnvSync.Core
         {
             if (force || !IsEnvironmentActive(target))
             {
-                foreach (var env in BaseEnvironments)
-                {
-                    if (env != target && IsEnvironmentActive(env))
-                    {
-                        SimulateClick(env);
-                    }
-                }
-
-                if (!IsEnvironmentActive(target))
-                {
-                    SimulateClick(target);
-                }
+                ChillEnvPlugin.CallServiceChangeWeather(target);
+                ChillEnvPlugin.Log?.LogInfo($"[环境] 切换至: {target}");
             }
-
-            ChillEnvPlugin.CallServiceChangeWeather(target);
-            ChillEnvPlugin.Log?.LogInfo($"[环境] 切换至: {target}");
         }
 
         private void ApplyScenery(EnvironmentType? target, bool force)
