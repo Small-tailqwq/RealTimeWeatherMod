@@ -93,6 +93,7 @@
     <Compile Include="ChillEnvPlugin.cs" />
     <Compile Include="Core\AutoEnvRunner.cs" />
     <Compile Include="Core\SceneryAutomationSystem.cs" />
+    <Compile Include="Core\StartupWeatherSyncPolicy.cs" />
     <Compile Include="Core\SyncPolicy.cs" />
     <Compile Include="Core\WeatherUiState.cs" />
     <Compile Include="Models\SunResponse.cs" />

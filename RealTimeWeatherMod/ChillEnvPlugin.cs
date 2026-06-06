@@ -12,7 +12,7 @@ namespace ChillWithYou.EnvSync
   [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", PluginVersion)]
   public class ChillEnvPlugin : BaseUnityPlugin
   {
-    internal const string PluginVersion = "5.2.1";
+    internal const string PluginVersion = "5.2.2";
 
     internal static ChillEnvPlugin Instance;
     internal static ManualLogSource Log;
@@ -41,6 +41,7 @@ namespace ChillWithYou.EnvSync
     internal static ConfigEntry<bool> Cfg_DetailedTimeSegments;
 
     internal static ConfigEntry<bool> Cfg_EnableEasterEggs;
+    internal static ConfigEntry<bool> Cfg_EnableAmbientSounds;
 
     // 调试配置
     internal static ConfigEntry<bool> Cfg_DebugMode;
@@ -110,7 +111,8 @@ namespace ChillWithYou.EnvSync
       // 【新增配置】
       Cfg_DetailedTimeSegments = Config.Bind("UI", "DetailedTimeSegments", true, "开启12小时制时，显示详细时段(凌晨/清晨/上午等)");
 
-      Cfg_EnableEasterEggs = Config.Bind("Automation", "EnableSeasonalEasterEggs", true, "启用季节性彩蛋与环境音效自动托管");
+      Cfg_EnableEasterEggs = Config.Bind("Automation", "EnableSeasonalEasterEggs", true, "启用季节性景色彩蛋自动托管");
+      Cfg_EnableAmbientSounds = Config.Bind("Automation", "EnableAmbientSounds", false, "启用环境音效自动托管");
 
       Cfg_DebugMode = Config.Bind("Debug", "EnableDebugMode", false, "调试模式");
       Cfg_DebugCode = Config.Bind("Debug", "SimulatedCode", 1, "模拟天气代码");

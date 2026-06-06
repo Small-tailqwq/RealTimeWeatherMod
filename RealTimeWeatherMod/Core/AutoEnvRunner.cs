@@ -17,7 +17,10 @@ namespace ChillWithYou.EnvSync.Core
         private bool _pendingForceRefresh;
 
         private bool _firstSyncDone;
-        private bool _initialEnvApplied;
+        private bool _startupSyncRunning;
+        private bool _startupAppliedOnce;
+        private bool _startupWeatherFetchFinished;
+        private WeatherInfo _pendingStartupWeather;
 
         private static AutoEnvRunner _instance;
 
@@ -85,108 +88,305 @@ namespace ChillWithYou.EnvSync.Core
             ScheduleDefaultWeatherCheck();
         }
 
+        private MonoBehaviour FindEnvironmentUI()
+        {
+            Type uiType = AccessTools.TypeByName("Bulbul.EnvironmentUI");
+            if (uiType == null)
+            {
+                return null;
+            }
+
+            var allUIs = Resources.FindObjectsOfTypeAll(uiType);
+            if (allUIs == null)
+            {
+                return null;
+            }
+
+            foreach (var obj in allUIs)
+            {
+                var mono = obj as MonoBehaviour;
+                if (mono != null && mono.gameObject.scene.rootCount != 0)
+                {
+                    return mono;
+                }
+            }
+
+            return null;
+        }
+
+        private bool TryGetStartupRuntime(MonoBehaviour envUI, out object windowViewService, out object environmentDataService)
+        {
+            windowViewService = null;
+            environmentDataService = null;
+
+            if (envUI == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var windowViewField = AccessTools.Field(envUI.GetType(), "_windowViewService");
+                var environmentDataField = AccessTools.Field(envUI.GetType(), "_environmentDataService");
+                windowViewService = windowViewField?.GetValue(envUI);
+                environmentDataService = environmentDataField?.GetValue(envUI);
+                return windowViewService != null && environmentDataService != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private EnvironmentType GetDesiredBaseEnvironment(SyncPolicySnapshot policy, WeatherInfo weather)
+        {
+            EnvironmentType target = GetBaseTimeEnvironmentOnly();
+            if (policy.CanApplyCloudyOverride && weather != null && IsBadWeather(weather.Code) && target != EnvironmentType.Night)
+            {
+                target = EnvironmentType.Cloudy;
+            }
+
+            return target;
+        }
+
+        private bool TryApplyStartupBase(MonoBehaviour envUI, EnvironmentType target)
+        {
+            if (_startupAppliedOnce && IsEnvironmentActive(target))
+            {
+                return true;
+            }
+
+            try
+            {
+                var changeTimeMethod = AccessTools.Method(envUI.GetType(), "ChangeTime");
+                if (changeTimeMethod == null) return false;
+
+                var paramType = changeTimeMethod.GetParameters()[0].ParameterType;
+                object enumVal = Enum.Parse(paramType, target.ToString());
+                changeTimeMethod.Invoke(envUI, new[] { enumVal });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ChillEnvPlugin.Log?.LogDebug($"[启动同步] 时间基底尚未可用: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool TryApplyStartupScenery(
+            object windowViewService,
+            object environmentDataService,
+            EnvironmentType? target)
+        {
+            // EnvironmentController.Setup happens after the character sits down.
+            // Its underlying services are injected earlier, so use the same final pipeline during startup.
+            try
+            {
+                var activateMethod = AccessTools.Method(windowViewService.GetType(), "ActivateWindow");
+                var deactivateMethod = AccessTools.Method(windowViewService.GetType(), "DeactivateWindow");
+                var setViewActiveMethod = AccessTools.Method(environmentDataService.GetType(), "SetViewActive");
+                if (activateMethod == null || deactivateMethod == null || setViewActiveMethod == null)
+                {
+                    return false;
+                }
+
+                Type windowViewType = activateMethod.GetParameters()[0].ParameterType;
+                foreach (var env in SceneryWeathers)
+                {
+                    bool shouldBeActive = target.HasValue && target.Value == env;
+                    bool isActive = IsEnvironmentActive(env);
+                    if (_startupAppliedOnce && shouldBeActive == isActive)
+                    {
+                        continue;
+                    }
+
+                    object enumValue = Enum.Parse(windowViewType, env.ToString());
+                    var changeMethod = shouldBeActive ? activateMethod : deactivateMethod;
+                    changeMethod.Invoke(windowViewService, new[] { enumValue });
+                    setViewActiveMethod.Invoke(environmentDataService, new object[] { enumValue, shouldBeActive });
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ChillEnvPlugin.Log?.LogDebug($"[启动同步] 降水直连尚未可用: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool AreSceneryControllersReady()
+        {
+            foreach (var env in SceneryWeathers)
+            {
+                if (!EnvRegistry.TryGet(env, out _))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool IsStartupStateApplied(SyncPolicySnapshot policy, WeatherInfo weather)
+        {
+            if (policy.CanControlTime && !IsEnvironmentActive(GetDesiredBaseEnvironment(policy, weather)))
+            {
+                return false;
+            }
+
+            if (policy.CanControlWeather && weather != null)
+            {
+                EnvironmentType? target = GetSceneryType(weather.Code);
+                foreach (var env in SceneryWeathers)
+                {
+                    bool shouldBeActive = target.HasValue && target.Value == env;
+                    if (IsEnvironmentActive(env) != shouldBeActive)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryApplyStartupEnvironment(
+            SyncPolicySnapshot policy,
+            WeatherInfo weather,
+            MonoBehaviour envUI,
+            object windowViewService,
+            object environmentDataService)
+        {
+            if (policy.CanControlTime && !TryApplyStartupBase(envUI, GetDesiredBaseEnvironment(policy, weather)))
+            {
+                return false;
+            }
+
+            if (policy.CanControlWeather && weather != null &&
+                !TryApplyStartupScenery(windowViewService, environmentDataService, GetSceneryType(weather.Code)))
+            {
+                return false;
+            }
+
+            return IsStartupStateApplied(policy, weather);
+        }
+
         private System.Collections.IEnumerator EarlyStartupSync()
         {
+            if (_startupSyncRunning || _firstSyncDone)
+            {
+                yield break;
+            }
+
+            _startupSyncRunning = true;
             var policy = BuildPolicySnapshot();
             bool hasApiKey = HasUsableApiKey();
+            bool needsWeatherData = policy.CanControlWeather && hasApiKey;
             bool needWeatherFetch = (policy.CanControlWeather || policy.CanFetchWeatherForUI) && hasApiKey;
             string location = ChillEnvPlugin.Cfg_Location.Value;
 
-            if (needWeatherFetch && !WeatherService.HasValidCache(location))
+            if (WeatherService.HasValidCache(location))
             {
+                _pendingStartupWeather = WeatherService.CachedWeather;
+                _startupWeatherFetchFinished = true;
+                UpdateUiWeatherString(_pendingStartupWeather);
+            }
+            else if (needWeatherFetch)
+            {
+                _startupWeatherFetchFinished = false;
                 StartCoroutine(WeatherService.FetchWeather(
                     ChillEnvPlugin.Cfg_SeniverseKey.Value,
                     location,
                     false,
-                    (weather) => { UpdateUiWeatherString(weather); }));
-            }
-
-            Type uiType = AccessTools.TypeByName("Bulbul.EnvironmentUI");
-            MonoBehaviour envUI = null;
-            float pollTimeout = 30f;
-            while (envUI == null && pollTimeout > 0f)
-            {
-                if (uiType != null)
-                {
-                    var allUIs = Resources.FindObjectsOfTypeAll(uiType);
-                    if (allUIs != null)
+                    (weather) =>
                     {
-                        foreach (var obj in allUIs)
+                        _startupWeatherFetchFinished = true;
+                        if (weather != null)
                         {
-                            var mono = obj as MonoBehaviour;
-                            if (mono != null && mono.gameObject.scene.rootCount != 0)
-                            {
-                                envUI = mono;
-                                break;
-                            }
+                            _pendingStartupWeather = weather;
+                            UpdateUiWeatherString(weather);
                         }
-                    }
-                }
-
-                if (envUI == null)
-                {
-                    yield return new WaitForSeconds(0.1f);
-                    pollTimeout -= 0.1f;
-                }
+                    }));
+            }
+            else
+            {
+                _startupWeatherFetchFinished = true;
             }
 
-            if (envUI != null && policy.CanControlTime && !ChillEnvPlugin.IsInCutscene())
+            float timeout = 30f;
+            while (!_firstSyncDone && timeout > 0f)
             {
-                var changeTimeMethod = AccessTools.Method(envUI.GetType(), "ChangeTime");
-                if (changeTimeMethod != null)
-                {
-                    EnvironmentType target = GetBaseTimeEnvironmentOnly();
-                    if (policy.CanApplyCloudyOverride && WeatherService.CachedWeather != null)
-                    {
-                        if (IsBadWeather(WeatherService.CachedWeather.Code) && target != EnvironmentType.Night)
-                        {
-                            target = EnvironmentType.Cloudy;
-                        }
-                    }
+                WeatherInfo weather = _pendingStartupWeather;
+                MonoBehaviour envUI = FindEnvironmentUI();
+                object windowViewService;
+                object environmentDataService;
+                bool runtimeReady = TryGetStartupRuntime(envUI, out windowViewService, out environmentDataService);
+                bool weatherDecisionReady = weather != null || _startupWeatherFetchFinished;
+                bool needsSceneryControllers = policy.CanControlWeather && weather != null;
+                bool sceneryControllersReady = !needsSceneryControllers || AreSceneryControllersReady();
 
-                    try
-                    {
-                        var paramType = changeTimeMethod.GetParameters()[0].ParameterType;
-                        object enumVal = Enum.Parse(paramType, target.ToString());
-                        changeTimeMethod.Invoke(envUI, new object[] { enumVal });
-                        _initialEnvApplied = true;
-                        ChillEnvPlugin.Log?.LogInfo($"[初始环境] 零切换: {target}");
-                    }
-                    catch (Exception ex)
-                    {
-                        ChillEnvPlugin.Log?.LogError($"[初始环境] ChangeTime 失败: {ex.Message}");
-                    }
-                }
-            }
+                var action = StartupWeatherSyncPolicy.Determine(
+                    policy.CanMutateEnvironment,
+                    runtimeReady,
+                    needsWeatherData,
+                    weatherDecisionReady,
+                    needsSceneryControllers,
+                    sceneryControllersReady);
 
-            float readyTimeout = 30f;
-            while (readyTimeout > 0f)
-            {
-                bool gameReady = EnvRegistry.Count > 0 && !ChillEnvPlugin.IsInCutscene();
-                bool dataReady = !needWeatherFetch || WeatherService.CachedWeather != null;
-                if (gameReady && dataReady && !_firstSyncDone)
+                if (action == StartupWeatherSyncAction.Skip)
                 {
+                    _firstSyncDone = true;
                     break;
                 }
 
-                yield return new WaitForSeconds(0.5f);
-                readyTimeout -= 0.5f;
+                if (action == StartupWeatherSyncAction.ApplyAndKeepSettling ||
+                    action == StartupWeatherSyncAction.ApplyAndFinish)
+                {
+                    bool applied = TryApplyStartupEnvironment(
+                        policy,
+                        weather,
+                        envUI,
+                        windowViewService,
+                        environmentDataService);
+
+                    if (applied && !_startupAppliedOnce)
+                    {
+                        _startupAppliedOnce = true;
+                        string scenery = weather == null ? "未接管" : (GetSceneryType(weather.Code)?.ToString() ?? "无降水");
+                        string baseEnvironment = policy.CanControlTime ? GetDesiredBaseEnvironment(policy, weather).ToString() : "未接管";
+                        ChillEnvPlugin.Log?.LogInfo($"[启动同步] 已在主角坐下前应用环境: base={baseEnvironment}, scenery={scenery}");
+                    }
+
+                    if (applied && action == StartupWeatherSyncAction.ApplyAndFinish)
+                    {
+                        _firstSyncDone = true;
+                        ChillEnvPlugin.Log?.LogInfo("[启动同步] 环境状态验证完成");
+                        break;
+                    }
+                }
+
+                yield return new WaitForSeconds(0.25f);
+                timeout -= 0.25f;
             }
 
-            if (!_firstSyncDone && EnvRegistry.Count > 0 && !ChillEnvPlugin.IsInCutscene())
+            if (!_firstSyncDone)
             {
-                _firstSyncDone = true;
-                ChillEnvPlugin.Log?.LogInfo("[启动] 执行首次完整同步");
-                TriggerSync(false, !_initialEnvApplied);
-
-                if (hasApiKey)
+                _firstSyncDone = _startupAppliedOnce;
+                if (_startupAppliedOnce)
                 {
-                    ScheduleNextWeatherCheckFromCache(location);
+                    ChillEnvPlugin.Log?.LogWarning("[启动同步] 控制器等待超时，但直连环境已应用并验证");
+                }
+                else
+                {
+                    ChillEnvPlugin.Log?.LogWarning("[启动同步] 超时等待环境运行时，后续由常规定时器兜底");
                 }
             }
-            else if (!_firstSyncDone)
+
+            _startupSyncRunning = false;
+            if (hasApiKey)
             {
-                ChillEnvPlugin.Log?.LogWarning("[启动] 超时等待游戏就绪，首次同步将由 Update 定时器兜底");
+                ScheduleNextWeatherCheckFromCache(location);
             }
         }
 
@@ -195,25 +395,9 @@ namespace ChillWithYou.EnvSync.Core
         /// </summary>
         public static void TriggerImmediateSync()
         {
-            if (_instance != null && !_instance._firstSyncDone)
+            if (_instance != null && !_instance._firstSyncDone && !_instance._startupSyncRunning)
             {
-                _instance.StartCoroutine(_instance.WaitAndSyncFallback());
-            }
-        }
-
-        private System.Collections.IEnumerator WaitAndSyncFallback()
-        {
-            float timeout = 15f;
-            while ((EnvRegistry.Count == 0 || ChillEnvPlugin.IsInCutscene()) && timeout > 0f)
-            {
-                yield return new WaitForSeconds(0.5f);
-                timeout -= 0.5f;
-            }
-
-            if (!_firstSyncDone && EnvRegistry.Count > 0 && !ChillEnvPlugin.IsInCutscene())
-            {
-                _firstSyncDone = true;
-                TriggerSync(false, true);
+                _instance.StartCoroutine(_instance.EarlyStartupSync());
             }
         }
 
@@ -696,10 +880,16 @@ namespace ChillWithYou.EnvSync.Core
             }
 
             EnvironmentType timeBase = GetBaseTimeEnvironmentOnly();
+            EnvironmentType finalEnv = timeBase;
+            if (policy.CanApplyCloudyOverride && weather != null && IsBadWeather(weather.Code) && timeBase != EnvironmentType.Night)
+            {
+                finalEnv = EnvironmentType.Cloudy;
+            }
+
             if (policy.CanControlTime)
             {
-                ApplyBaseEnvironment(timeBase, force);
-                _lastAppliedEnv = timeBase;
+                ApplyBaseEnvironment(finalEnv, force);
+                _lastAppliedEnv = finalEnv;
             }
 
             if (!policy.CanControlWeather || weather == null)
@@ -707,19 +897,11 @@ namespace ChillWithYou.EnvSync.Core
                 return;
             }
 
-            EnvironmentType baseEnv = policy.CanControlTime
-                ? timeBase
-                : (GetCurrentBaseEnvironment() ?? GetBaseTimeEnvironmentOnly());
-
-            EnvironmentType finalEnv = baseEnv;
-            if (policy.CanApplyCloudyOverride && IsBadWeather(weather.Code) && baseEnv != EnvironmentType.Night)
-            {
-                finalEnv = EnvironmentType.Cloudy;
-                ApplyBaseEnvironment(finalEnv, force);
-            }
-
             ApplyScenery(GetSceneryType(weather.Code), force);
-            _lastAppliedEnv = finalEnv;
+            if (!policy.CanControlTime)
+            {
+                _lastAppliedEnv = GetCurrentBaseEnvironment() ?? finalEnv;
+            }
         }
     }
 }

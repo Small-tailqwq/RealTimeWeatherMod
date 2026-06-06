@@ -34,6 +34,13 @@ namespace ChillWithYou.EnvSync.Core
       public EnvironmentType EnvType;
       public Func<bool> Condition;
       public string Name;
+      public SceneryRuleCategory Category = SceneryRuleCategory.SeasonalScenery;
+    }
+
+    private enum SceneryRuleCategory
+    {
+      SeasonalScenery,
+      AmbientSound
     }
 
     private List<SceneryRule> _rules = new List<SceneryRule>();
@@ -101,6 +108,7 @@ namespace ChillWithYou.EnvSync.Core
       {
         Name = "CookingAudio",
         EnvType = Env_Cooking,
+        Category = SceneryRuleCategory.AmbientSound,
         Condition = () =>
         {
           int h = DateTime.Now.Hour;
@@ -115,6 +123,7 @@ namespace ChillWithYou.EnvSync.Core
       {
         Name = "AC_Audio",
         EnvType = Env_AC,
+        Category = SceneryRuleCategory.AmbientSound,
         Condition = () =>
         {
           var w = WeatherService.CachedWeather;
@@ -130,7 +139,8 @@ namespace ChillWithYou.EnvSync.Core
         EnvType = Env_Sakura,
         Condition = () =>
         {
-          return GetSeason() == Season.Spring && IsDay() && IsGoodWeather();
+          int month = DateTime.Now.Month;
+          return month >= 3 && month <= 4 && IsDay() && IsGoodWeather();
         }
       });
 
@@ -139,6 +149,7 @@ namespace ChillWithYou.EnvSync.Core
       {
         Name = "Cicadas",
         EnvType = Env_Cicada,
+        Category = SceneryRuleCategory.AmbientSound,
         Condition = () =>
         {
           return GetSeason() == Season.Summer && IsDay() && IsGoodWeather();
@@ -366,11 +377,19 @@ namespace ChillWithYou.EnvSync.Core
 
     private void Update()
     {
-      if (!ChillEnvPlugin.Cfg_EnableEasterEggs.Value) return;
       if (!ChillEnvPlugin.Initialized) return;
 
       // 处理延迟验证
       ProcessPendingActions();
+
+      if (!HasAnyAutomationEnabled())
+      {
+        if (_autoEnabledMods.Count > 0 && !ChillEnvPlugin.IsInCutscene())
+        {
+          CleanupDisabledAutoMods();
+        }
+        return;
+      }
 
       _checkTimer += Time.deltaTime;
       if (_checkTimer >= CheckInterval)
@@ -432,6 +451,8 @@ namespace ChillWithYou.EnvSync.Core
       // 剧情保护：剧情中跳过所有彩蛋自动切换
       if (ChillEnvPlugin.IsInCutscene()) return;
 
+      CleanupDisabledAutoMods();
+
       if (IsEnvActive(Env_DeepSea))
       {
         CleanupAllAutoMods();
@@ -453,7 +474,13 @@ namespace ChillWithYou.EnvSync.Core
         if (_pendingActions.ContainsKey(envType)) continue;
 
         var rule = _rules.Find(r => r.EnvType == envType);
-        if (rule != null && !rule.Condition())
+        if (rule == null)
+        {
+          _autoEnabledMods.Remove(envType);
+          continue;
+        }
+
+        if (!IsRuleEnabled(rule) || !rule.Condition())
         {
           DisableMod(rule.Name, envType);
         }
@@ -462,6 +489,8 @@ namespace ChillWithYou.EnvSync.Core
       // Step 2: 检查未托管的环境，开启满足条件的
       foreach (var rule in _rules)
       {
+        if (!IsRuleEnabled(rule)) continue;
+
         // 跳过：用户操作过的、已托管的、等待验证的
         if (UserInteractedMods.Contains(rule.EnvType)) continue;
         if (_autoEnabledMods.Contains(rule.EnvType)) continue;
@@ -475,20 +504,39 @@ namespace ChillWithYou.EnvSync.Core
           EnableMod(rule.Name, rule.EnvType);
         }
       }
+    }
 
-      // Step 3: 孤儿环境检测 — 发现条件不满足但仍在播放的环境并自动关闭
-      // 解决追踪丢失后声音永不停止的问题
-      foreach (var rule in _rules)
+    private bool HasAnyAutomationEnabled()
+    {
+      return ChillEnvPlugin.Cfg_EnableEasterEggs.Value || ChillEnvPlugin.Cfg_EnableAmbientSounds.Value;
+    }
+
+    private bool IsRuleEnabled(SceneryRule rule)
+    {
+      if (rule.Category == SceneryRuleCategory.AmbientSound)
+        return ChillEnvPlugin.Cfg_EnableAmbientSounds.Value;
+
+      return ChillEnvPlugin.Cfg_EnableEasterEggs.Value;
+    }
+
+    private void CleanupDisabledAutoMods()
+    {
+      List<EnvironmentType> toCheck = new List<EnvironmentType>(_autoEnabledMods);
+      foreach (var envType in toCheck)
       {
-        if (UserInteractedMods.Contains(rule.EnvType)) continue;
-        if (_autoEnabledMods.Contains(rule.EnvType)) continue;
-        if (_pendingActions.ContainsKey(rule.EnvType)) continue;
+        if (_pendingActions.ContainsKey(envType)) continue;
 
-        if (!IsEnvActive(rule.EnvType)) continue;
-        if (rule.Condition()) continue;
+        var rule = _rules.Find(r => r.EnvType == envType);
+        if (rule == null)
+        {
+          _autoEnabledMods.Remove(envType);
+          continue;
+        }
 
-        ChillEnvPlugin.Log?.LogWarning($"[孤儿检测] 发现 {rule.Name} 不应播放但处于激活状态，强制关闭");
-        DisableMod(rule.Name, rule.EnvType);
+        if (!IsRuleEnabled(rule))
+        {
+          DisableMod(rule.Name, envType);
+        }
       }
     }
 

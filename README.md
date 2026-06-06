@@ -129,8 +129,10 @@
 
 ```ini
 [Automation]
-## 启用季节性彩蛋与环境音效自动托管
+## 启用季节性景色彩蛋自动托管
 EnableSeasonalEasterEggs = true
+## 启用环境音效自动托管
+EnableAmbientSounds = false
 
 
 [Debug]
@@ -295,6 +297,11 @@ RefreshMinutes = 30
 
 ## 📝 版本历史
 > 注：版本号为 AI 自己写的，不关我的事，我也不知道为啥它刷版本号为什么这么随意
+
+### v5.2.2-左右脑握手言和
+- 修复季节性彩蛋启用后，玩家手动开启的“樱花”等景色可能被自动化误关的问题
+- “季节性景色彩蛋”和“环境音效”分开控制，新增 `Automation.EnableAmbientSounds = false`
+- 樱花自动触发窗口改为 3-4 月，5 月不再自动开樱花
 
 ### v5.2.1-解耦补丁终于落地
 - 完成天气同步与时间同步解耦，新增独立配置 `TimeSync.EnableTimeSync`（默认开启）

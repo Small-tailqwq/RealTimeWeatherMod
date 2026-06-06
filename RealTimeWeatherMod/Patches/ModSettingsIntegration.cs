@@ -114,7 +114,8 @@ namespace ChillWithYou.EnvSync.Patches
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_TIME", "Time Sync", "時間同期", "时间同步" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_UI", "Show Weather on UI", "UIに天気を表示", "日期栏天气" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_DETAIL", "Detailed Segments", "詳細セグメント", "详细时段" });
-                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_EGG", "Easter Eggs", "イースターエッグ", "彩蛋" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_EGG", "Seasonal Scenery", "季節の景色", "季节性景色" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_AMBIENT", "Ambient Sounds", "環境音", "环境音效" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_CITY", "City", "都市", "城市" });
                 }
 
@@ -188,6 +189,16 @@ namespace ChillWithYou.EnvSync.Patches
                     (value) =>
                     {
                         ChillEnvPlugin.Cfg_EnableEasterEggs.Value = value;
+                        ChillEnvPlugin.Instance.Config.Save();
+                    });
+
+                string labelAmbient = hasTranslation ? "ENV_SYNC_AMBIENT" : "环境音效";
+                AddToggleSafe(managerInstance, managerType,
+                    labelAmbient,
+                    ChillEnvPlugin.Cfg_EnableAmbientSounds.Value,
+                    (value) =>
+                    {
+                        ChillEnvPlugin.Cfg_EnableAmbientSounds.Value = value;
                         ChillEnvPlugin.Instance.Config.Save();
                     });
 
