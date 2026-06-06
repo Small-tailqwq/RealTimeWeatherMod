@@ -364,7 +364,7 @@ namespace ChillWithYou.EnvSync.Core
               IsWhaleSystemTriggered = true; // 标记为系统抽中
               
               // 不强制切换时段，黄昏和晚上的鲸鱼也很美
-              ChillEnvPlugin.Log?.LogWarning("[鲸鱼彩蛋] 🐋 系统抽中鲸鱼！保持当前时段...");
+              ChillEnvPlugin.Log?.LogWarning("[鲸鱼彩蛋] 系统抽中鲸鱼，保持当前时段...");
               
               return true;
             }
@@ -533,7 +533,9 @@ namespace ChillWithYou.EnvSync.Core
           continue;
         }
 
-        if (!IsRuleEnabled(rule))
+        if (SceneryAutomationCleanupPolicy.ShouldDisableManagedMod(
+          IsRuleEnabled(rule),
+          rule.Condition()))
         {
           DisableMod(rule.Name, envType);
         }

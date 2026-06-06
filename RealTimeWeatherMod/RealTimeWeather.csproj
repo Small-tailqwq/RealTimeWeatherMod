@@ -92,7 +92,9 @@
   <ItemGroup>
     <Compile Include="ChillEnvPlugin.cs" />
     <Compile Include="Core\AutoEnvRunner.cs" />
+    <Compile Include="Core\AutoEnvRunner.StartupSync.cs" />
     <Compile Include="Core\SceneryAutomationSystem.cs" />
+    <Compile Include="Core\SceneryAutomationCleanupPolicy.cs" />
     <Compile Include="Core\StartupWeatherSyncPolicy.cs" />
     <Compile Include="Core\SyncPolicy.cs" />
     <Compile Include="Core\WeatherUiState.cs" />

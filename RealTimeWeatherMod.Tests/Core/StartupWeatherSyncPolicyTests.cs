@@ -88,5 +88,33 @@ namespace RealTimeWeatherMod.Tests.Core
 
             Assert.Equal(StartupWeatherSyncAction.ApplyAndFinish, action);
         }
+
+        [Fact]
+        public void Determine_RuntimeStillMissingWithoutWeather_NeedsRuntimeFirst()
+        {
+            var action = StartupWeatherSyncPolicy.Determine(
+                canMutateEnvironment: true,
+                runtimeReady: false,
+                needsWeatherData: false,
+                weatherDecisionReady: false,
+                needsSceneryControllers: false,
+                sceneryControllersReady: false);
+
+            Assert.Equal(StartupWeatherSyncAction.WaitForRuntime, action);
+        }
+
+        [Fact]
+        public void Determine_WeatherDecisionReadyWithoutSceneryDependency_FinishesImmediately()
+        {
+            var action = StartupWeatherSyncPolicy.Determine(
+                canMutateEnvironment: true,
+                runtimeReady: true,
+                needsWeatherData: true,
+                weatherDecisionReady: true,
+                needsSceneryControllers: false,
+                sceneryControllersReady: false);
+
+            Assert.Equal(StartupWeatherSyncAction.ApplyAndFinish, action);
+        }
     }
 }

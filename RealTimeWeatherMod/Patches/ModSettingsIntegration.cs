@@ -334,7 +334,7 @@ namespace ChillWithYou.EnvSync.Patches
             // 用真实时间的延迟,避免 Time.timeScale 影响导致等待过长
             yield return new WaitForSecondsRealtime(delay);
             
-            ChillEnvPlugin.Log?.LogInfo($"🔄 [EnvSync] 城市已更新为 '{location}',正在刷新天气与日出日落数据...");
+            ChillEnvPlugin.Log?.LogInfo($"[EnvSync] 城市已更新为 '{location}',正在刷新天气与日出日落数据...");
             
             // 立即触发天气刷新 (配置值已在回调中更新,无需 Reload)
             Core.AutoEnvRunner.TriggerWeatherRefresh();
