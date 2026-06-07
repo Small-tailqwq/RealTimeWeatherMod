@@ -538,14 +538,37 @@ namespace ChillWithYou.EnvSync.Core
             foreach (var env in SceneryWeathers)
             {
                 bool shouldBeActive = target.HasValue && target.Value == env;
-                bool isActive = IsEnvironmentActive(env);
-
-                if (shouldBeActive && !isActive)
+                if (EnvRegistry.TryGet(env, out var controller))
                 {
-                    SimulateClick(env);
-                    ChillEnvPlugin.Log?.LogInfo($"[景色] 开启: {env}");
+                    bool isInTargetState;
+                    if (!EnvironmentControllerStateSetter.TryIsInTargetState(
+                        controller,
+                        shouldBeActive,
+                        out isInTargetState))
+                    {
+                        ChillEnvPlugin.Log?.LogWarning($"[景色] 状态判定失败，降级为点击方案: {env}");
+                        SimulateClick(env);
+                        continue;
+                    }
+
+                    if (!isInTargetState)
+                    {
+                        if (!EnvironmentControllerStateSetter.TrySetCombinedState(controller, shouldBeActive))
+                        {
+                            ChillEnvPlugin.Log?.LogWarning(
+                                $"[景色] 窗景音频直连失败，降级为点击方案: {env}");
+                            SimulateClick(env);
+                            continue;
+                        }
+
+                        ChillEnvPlugin.Log?.LogInfo(
+                            $"[景色] 已同步: {env}={shouldBeActive}");
+                    }
+                    continue;
                 }
-                else if (!shouldBeActive && isActive)
+
+                bool isActive = IsEnvironmentActive(env);
+                if (shouldBeActive != isActive)
                 {
                     SimulateClick(env);
                 }

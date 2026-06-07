@@ -31,7 +31,10 @@ namespace ChillWithYou.EnvSync.Core
         private MethodInfo _cachedActivateWindowMethod;
         private MethodInfo _cachedDeactivateWindowMethod;
         private MethodInfo _cachedSetViewActiveMethod;
+        private MethodInfo _cachedIsMuteMethod;
+        private MethodInfo _cachedSetMuteMethod;
         private Type _cachedWindowViewEnumType;
+        private Type _cachedAmbientSoundEnumType;
 
         private MonoBehaviour FindEnvironmentUI()
         {
@@ -110,7 +113,10 @@ namespace ChillWithYou.EnvSync.Core
                 _cachedActivateWindowMethod != null &&
                 _cachedDeactivateWindowMethod != null &&
                 _cachedSetViewActiveMethod != null &&
-                _cachedWindowViewEnumType != null)
+                _cachedIsMuteMethod != null &&
+                _cachedSetMuteMethod != null &&
+                _cachedWindowViewEnumType != null &&
+                _cachedAmbientSoundEnumType != null)
             {
                 return true;
             }
@@ -120,20 +126,29 @@ namespace ChillWithYou.EnvSync.Core
             _cachedActivateWindowMethod = AccessTools.Method(windowViewServiceType, "ActivateWindow");
             _cachedDeactivateWindowMethod = AccessTools.Method(windowViewServiceType, "DeactivateWindow");
             _cachedSetViewActiveMethod = AccessTools.Method(environmentDataServiceType, "SetViewActive");
+            _cachedIsMuteMethod = AccessTools.Method(environmentDataServiceType, "IsMute");
+            _cachedSetMuteMethod = AccessTools.Method(environmentDataServiceType, "SetMute");
             _cachedWindowViewEnumType = GetSingleParameterType(_cachedActivateWindowMethod);
+            _cachedAmbientSoundEnumType = GetSingleParameterType(_cachedIsMuteMethod);
 
-            if (_cachedSetViewActiveMethod == null)
+            if (_cachedSetViewActiveMethod == null || _cachedSetMuteMethod == null)
             {
                 return false;
             }
 
             var setViewActiveParameters = _cachedSetViewActiveMethod.GetParameters();
+            var setMuteParameters = _cachedSetMuteMethod.GetParameters();
             return _cachedActivateWindowMethod != null &&
                 _cachedDeactivateWindowMethod != null &&
+                _cachedIsMuteMethod != null &&
                 _cachedWindowViewEnumType != null &&
+                _cachedAmbientSoundEnumType != null &&
                 setViewActiveParameters.Length == 2 &&
                 setViewActiveParameters[0].ParameterType == _cachedWindowViewEnumType &&
-                setViewActiveParameters[1].ParameterType == typeof(bool);
+                setViewActiveParameters[1].ParameterType == typeof(bool) &&
+                setMuteParameters.Length == 2 &&
+                setMuteParameters[0].ParameterType == _cachedAmbientSoundEnumType &&
+                setMuteParameters[1].ParameterType == typeof(bool);
         }
 
         private static Type GetSingleParameterType(MethodInfo method)
@@ -218,39 +233,111 @@ namespace ChillWithYou.EnvSync.Core
             foreach (var env in SceneryWeathers)
             {
                 bool shouldBeActive = target.HasValue && target.Value == env;
-                bool isActive = IsEnvironmentActive(env);
-                if (_startupAppliedOnce && shouldBeActive == isActive)
+
+                if (EnvRegistry.TryGet(env, out var controller))
                 {
-                    continue;
+                    bool isInTargetState;
+                    if (EnvironmentControllerStateSetter.TryIsInTargetState(
+                        controller,
+                        shouldBeActive,
+                        out isInTargetState))
+                    {
+                        if (isInTargetState ||
+                            EnvironmentControllerStateSetter.TrySetCombinedState(controller, shouldBeActive))
+                        {
+                            continue;
+                        }
+                    }
                 }
 
-                object enumValue;
-                if (!TryGetRuntimeEnumValue(_cachedWindowViewEnumType, env.ToString(), out enumValue))
+                bool isWindowActive = IsEnvironmentActive(env);
+                object windowEnumValue;
+                object ambientEnumValue;
+                if (!TryGetRuntimeEnumValue(_cachedWindowViewEnumType, env.ToString(), out windowEnumValue))
                 {
                     return false;
                 }
 
-                var changeMethod = shouldBeActive ? _cachedActivateWindowMethod : _cachedDeactivateWindowMethod;
-                if (!TryInvokeRuntimeMethod(
-                    changeMethod,
-                    windowViewService,
-                    new[] { enumValue },
-                    "[启动同步] 降水直连尚未可用"))
+                bool hasAmbientSound = TryGetRuntimeEnumValue(
+                    _cachedAmbientSoundEnumType,
+                    env.ToString(),
+                    out ambientEnumValue);
+                bool isSoundActive = false;
+                if (hasAmbientSound &&
+                    !TryGetStartupSoundActive(environmentDataService, ambientEnumValue, out isSoundActive))
                 {
-                    return false;
+                    ChillEnvPlugin.Log?.LogWarning("[启动同步] 无法获取降水音频状态，跳过音频同步");
+                    hasAmbientSound = false;
                 }
 
-                if (!TryInvokeRuntimeMethod(
-                    _cachedSetViewActiveMethod,
-                    environmentDataService,
-                    new object[] { enumValue, shouldBeActive },
-                    "[启动同步] 降水直连尚未可用"))
+                if (isWindowActive != shouldBeActive)
                 {
-                    return false;
+                    var changeMethod = shouldBeActive ? _cachedActivateWindowMethod : _cachedDeactivateWindowMethod;
+                    if (!TryInvokeRuntimeMethod(
+                        changeMethod,
+                        windowViewService,
+                        new[] { windowEnumValue },
+                        "[启动同步] 降水窗景直连尚未可用") ||
+                        !TryInvokeRuntimeMethod(
+                            _cachedSetViewActiveMethod,
+                            environmentDataService,
+                            new object[] { windowEnumValue, shouldBeActive },
+                            "[启动同步] 降水窗景状态尚未可用"))
+                    {
+                        return false;
+                    }
+                }
+
+                if (hasAmbientSound &&
+                    isSoundActive != shouldBeActive)
+                {
+                    if (!TryInvokeRuntimeMethod(
+                        _cachedSetMuteMethod,
+                        environmentDataService,
+                        new object[] { ambientEnumValue, !shouldBeActive },
+                        "[启动同步] 降水音频状态尚未可用"))
+                    {
+                        ChillEnvPlugin.Log?.LogWarning("[启动同步] 设置降水音频静音状态失败");
+                    }
                 }
             }
 
             return true;
+        }
+
+        private bool TryGetStartupSoundActive(
+            object environmentDataService,
+            object ambientEnumValue,
+            out bool isActive)
+        {
+            isActive = false;
+
+            try
+            {
+                isActive = !(bool)_cachedIsMuteMethod.Invoke(
+                    environmentDataService,
+                    new[] { ambientEnumValue });
+                return true;
+            }
+            catch (ArgumentException ex)
+            {
+                ChillEnvPlugin.Log?.LogDebug($"[启动同步] 无法读取降水音频状态: {ex.Message}");
+            }
+            catch (TargetException ex)
+            {
+                ChillEnvPlugin.Log?.LogDebug($"[启动同步] 无法读取降水音频状态: {ex.Message}");
+            }
+            catch (MethodAccessException ex)
+            {
+                ChillEnvPlugin.Log?.LogDebug($"[启动同步] 无法读取降水音频状态: {ex.Message}");
+            }
+            catch (TargetInvocationException ex)
+            {
+                ChillEnvPlugin.Log?.LogDebug(
+                    $"[启动同步] 无法读取降水音频状态: {GetInvocationMessage(ex)}");
+            }
+
+            return false;
         }
 
         private static bool TryGetRuntimeEnumValue(Type enumType, string valueName, out object enumValue)

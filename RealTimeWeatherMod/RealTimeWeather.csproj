@@ -93,7 +93,12 @@
     <Compile Include="ChillEnvPlugin.cs" />
     <Compile Include="Core\AutoEnvRunner.cs" />
     <Compile Include="Core\AutoEnvRunner.StartupSync.cs" />
+    <Compile Include="Core\AutoManagedStateCodec.cs" />
+    <Compile Include="Core\CombinedEnvironmentStatePolicy.cs" />
+    <Compile Include="Core\EnvironmentControllerStateSetter.cs" />
+    <Compile Include="Core\SceneryAutomationOwnership.cs" />
     <Compile Include="Core\SceneryAutomationSystem.cs" />
+    <Compile Include="Core\SceneryAutomationUserData.cs" />
     <Compile Include="Core\SceneryAutomationCleanupPolicy.cs" />
     <Compile Include="Core\StartupWeatherSyncPolicy.cs" />
     <Compile Include="Core\SyncPolicy.cs" />
