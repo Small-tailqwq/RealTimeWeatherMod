@@ -53,7 +53,7 @@ namespace ChillWithYou.EnvSync.Patches
                 // 尝试注册，如果成功则退出协程
                 if (TryRegisterSettings())
                 {
-                    ChillEnvPlugin.Log?.LogInfo("✅ [EnvSync] MOD 设置已成功注册到 iGPU Savior 界面");
+                    ChillEnvPlugin.Log?.LogInfo("[EnvSync] MOD 设置已成功注册到 iGPU Savior 界面");
                     yield break;
                 }
 
@@ -64,7 +64,7 @@ namespace ChillWithYou.EnvSync.Patches
 
             // 超时未找到主框架，说明用户可能未安装 iGPU Savior
             // 这不是错误，只是说明设置界面功能不可用
-            ChillEnvPlugin.Log?.LogWarning("⚠️ [EnvSync] 未检测到 iGPU Savior，设置界面集成已跳过。");
+            ChillEnvPlugin.Log?.LogInfo("[EnvSync] 未安装可选的 iGPU Savior，已跳过设置界面集成");
         }
 
         /// <summary>
