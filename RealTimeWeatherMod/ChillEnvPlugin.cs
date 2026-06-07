@@ -12,7 +12,8 @@ namespace ChillWithYou.EnvSync
   [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", PluginVersion)]
   public class ChillEnvPlugin : BaseUnityPlugin
   {
-    internal const string PluginVersion = "5.2.2";
+    internal const string PluginVersion = "5.2.3";
+    internal const string BuildId = "controller-readiness-20260606";
 
     internal static ChillEnvPlugin Instance;
     internal static ManualLogSource Log;
@@ -51,6 +52,7 @@ namespace ChillWithYou.EnvSync
 
     // [Hidden] 上次同步日出日落的日期
     internal static ConfigEntry<string> Cfg_LastSunSyncDate;
+    internal static ConfigEntry<string> Cfg_AutoManagedEnvironments;
 
     private static GameObject _runnerGO;
 
@@ -59,7 +61,7 @@ namespace ChillWithYou.EnvSync
       Instance = this;
       Log = Logger;
 
-      Log.LogWarning($"【{PluginVersion}】启动 - 解锁调试版");
+      Log.LogInfo($"【{PluginVersion}】启动 - Build={BuildId}");
 
       try
       {
@@ -121,6 +123,11 @@ namespace ChillWithYou.EnvSync
 
       // [Hidden] 上次同步日出日落的日期
       Cfg_LastSunSyncDate = Config.Bind("Internal", "LastSunSyncDate", "", "上次同步日期");
+      Cfg_AutoManagedEnvironments = Config.Bind(
+        "Internal",
+        "AutoManagedEnvironments",
+        "",
+        "由自动托管开启的环境，用于跨会话安全清理");
     }
 
     internal static void TryInitializeOnce(UnlockItemService svc)
