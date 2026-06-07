@@ -16,6 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\RealTimeWeatherMod\Core\AutoManagedStateCodec.cs" Link="Core\AutoManagedStateCodec.cs" />
+    <Compile Include="..\RealTimeWeatherMod\Core\CombinedEnvironmentStatePolicy.cs" Link="Core\CombinedEnvironmentStatePolicy.cs" />
     <Compile Include="..\RealTimeWeatherMod\Services\DecorationUnlockScanner.cs" Link="Services\DecorationUnlockScanner.cs" />
     <Compile Include="..\RealTimeWeatherMod\Core\SceneryAutomationCleanupPolicy.cs" Link="Core\SceneryAutomationCleanupPolicy.cs" />
     <Compile Include="..\RealTimeWeatherMod\Core\SyncPolicy.cs" Link="Core\SyncPolicy.cs" />
