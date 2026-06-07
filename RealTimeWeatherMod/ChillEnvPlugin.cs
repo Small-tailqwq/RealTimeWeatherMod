@@ -12,7 +12,7 @@ namespace ChillWithYou.EnvSync
   [BepInPlugin("chillwithyou.envsync", "Chill Env Sync", PluginVersion)]
   public class ChillEnvPlugin : BaseUnityPlugin
   {
-    internal const string PluginVersion = "5.2.3";
+    internal const string PluginVersion = "5.2.2";
     internal const string BuildId = "controller-readiness-20260606";
 
     internal static ChillEnvPlugin Instance;
