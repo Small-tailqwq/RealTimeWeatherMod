@@ -8,7 +8,7 @@ using System.Reflection;
 
 namespace ChillWithYou.EnvSync.Core
 {
-  public class SceneryAutomationSystem : MonoBehaviour
+  public partial class SceneryAutomationSystem : MonoBehaviour
   {
     internal static HashSet<EnvironmentType> _autoEnabledMods = new HashSet<EnvironmentType>();
     public static HashSet<EnvironmentType> UserInteractedMods = new HashSet<EnvironmentType>();
@@ -84,6 +84,8 @@ namespace ChillWithYou.EnvSync.Core
     {
       InitializationTime = Time.realtimeSinceStartup;
       InitializeRules();
+      RestoreManagedOwnership();
+      LoadUserInteractedMods();
     }
 
     private void InitializeRules()
@@ -391,6 +393,8 @@ namespace ChillWithYou.EnvSync.Core
         return;
       }
 
+      FlushOwnershipIfDirty();
+
       _checkTimer += Time.deltaTime;
       if (_checkTimer >= CheckInterval)
       {
@@ -419,12 +423,12 @@ namespace ChillWithYou.EnvSync.Core
             // 状态符合预期
             if (action.TargetState)
             {
-              _autoEnabledMods.Add(env);
+              MarkAutoManaged(env);
               ChillEnvPlugin.Log?.LogInfo($"[自动托管] ✓ 已开启: {action.RuleName}");
             }
             else
             {
-              _autoEnabledMods.Remove(env);
+              ReleaseAutoManaged(env);
               ChillEnvPlugin.Log?.LogInfo($"[自动托管] ✓ 已关闭: {action.RuleName}");
             }
           }
@@ -466,7 +470,7 @@ namespace ChillWithYou.EnvSync.Core
         // 用户手动操作过的不管
         if (UserInteractedMods.Contains(envType))
         {
-          _autoEnabledMods.Remove(envType);
+          ReleaseAutoManaged(envType);
           continue;
         }
 
@@ -476,7 +480,7 @@ namespace ChillWithYou.EnvSync.Core
         var rule = _rules.Find(r => r.EnvType == envType);
         if (rule == null)
         {
-          _autoEnabledMods.Remove(envType);
+          ReleaseAutoManaged(envType);
           continue;
         }
 
@@ -504,6 +508,28 @@ namespace ChillWithYou.EnvSync.Core
           EnableMod(rule.Name, rule.EnvType);
         }
       }
+
+      // Step 3: 孤儿环境检测 — 关闭活跃但不应播放的未托管环境
+      // 处理启动竞态：EnvRegistry 未就绪时 DisableMod 会释放托管，
+      // 游戏加载存档后环境变为活跃但已脱离 _autoEnabledMods，此步骤兜底关闭。
+      foreach (var rule in _rules)
+      {
+        if (UserInteractedMods.Contains(rule.EnvType)) continue;
+        if (_autoEnabledMods.Contains(rule.EnvType)) continue;
+        if (_pendingActions.ContainsKey(rule.EnvType)) continue;
+
+        if (!IsEnvActive(rule.EnvType)) continue;
+        if (rule.Condition()) continue;
+
+        if (!IsRuleEnabled(rule))
+        {
+          DisableMod(rule.Name, rule.EnvType);
+          continue;
+        }
+
+        ChillEnvPlugin.Log?.LogWarning($"[孤儿检测] {rule.Name} 不应播放但处于激活状态，强制关闭");
+        DisableMod(rule.Name, rule.EnvType);
+      }
     }
 
     private bool HasAnyAutomationEnabled()
@@ -529,7 +555,7 @@ namespace ChillWithYou.EnvSync.Core
         var rule = _rules.Find(r => r.EnvType == envType);
         if (rule == null)
         {
-          _autoEnabledMods.Remove(envType);
+          ReleaseAutoManaged(envType);
           continue;
         }
 
@@ -559,9 +585,8 @@ namespace ChillWithYou.EnvSync.Core
         // 2. 再次确认当前状态
         if (IsEnvActive(env))
         {
-          // 已经是开启状态，直接加入托管列表
-          _autoEnabledMods.Add(env);
-          ChillEnvPlugin.Log?.LogInfo($"[自动托管] ↻ 已是开启状态: {ruleName}");
+          // 可能是玩家在本轮检查后手动开启，不主动接管。
+          ChillEnvPlugin.Log?.LogInfo($"[自动托管] 已由外部开启，跳过托管: {ruleName}");
           return;
         }
 
@@ -601,23 +626,28 @@ namespace ChillWithYou.EnvSync.Core
           }
         }
 
-        // 2. 再次确认当前状态
+        if (!EnvRegistry.TryGet(env, out var ctrl))
+        {
+          ChillEnvPlugin.Log?.LogWarning($"[自动托管] 控制器未就绪，强制释放: {ruleName}");
+          ReleaseAutoManaged(env);
+          return;
+        }
+
+        // 3. 再次确认当前状态
         if (!IsEnvActive(env))
         {
-          // 已经是关闭状态
-          _autoEnabledMods.Remove(env);
+          ReleaseAutoManaged(env);
           ChillEnvPlugin.Log?.LogInfo($"[自动托管] ↻ 已是关闭状态: {ruleName}");
           return;
         }
 
-        // 3. 执行点击
-        if (EnvRegistry.TryGet(env, out var ctrl))
+        // 4. 执行点击
         {
           ChillEnvPlugin.Log?.LogInfo($"[自动托管] → 点击关闭: {ruleName}");
           ChillEnvPlugin.SimulateClickMainIcon(ctrl);
           _lastClickTime[env] = Time.time;
 
-          // 4. 登记延迟验证任务
+          // 5. 登记延迟验证任务
           _pendingActions[env] = new PendingAction
           {
             TargetState = false,
@@ -645,7 +675,7 @@ namespace ChillWithYou.EnvSync.Core
       }
     }
 
-    public bool IsAutoManaged(EnvironmentType type)
+    public static bool IsAutoManaged(EnvironmentType type)
     {
       return _autoEnabledMods.Contains(type);
     }

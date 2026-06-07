@@ -146,13 +146,14 @@ namespace ChillWithYou.EnvSync.Patches
             if (!SceneryAutomationSystem.UserInteractedMods.Contains(type))
             {
                 SceneryAutomationSystem.UserInteractedMods.Add(type);
+                SceneryAutomationSystem.PersistUserInteractedMods();
                 ChillEnvPlugin.Log?.LogInfo($"[用户交互] 用户接管了 {type}，停止自动托管。");
             }
 
             // 立即从自动托管列表中移除
-            if (SceneryAutomationSystem._autoEnabledMods.Contains(type))
+            if (SceneryAutomationSystem.IsAutoManaged(type))
             {
-                SceneryAutomationSystem._autoEnabledMods.Remove(type);
+                SceneryAutomationSystem.ReleaseAutoManaged(type);
                 ChillEnvPlugin.Log?.LogDebug($"[用户交互] 已从托管列表移除 {type}");
             }
 
