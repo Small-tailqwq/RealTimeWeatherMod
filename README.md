@@ -3,8 +3,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Framework 4.7.2](https://img.shields.io/badge/.NET%20Framework-4.7.2-blue.svg)](https://dotnet.microsoft.com/download/dotnet-framework/net472)
 [![BepInEx](https://img.shields.io/badge/BepInEx-Plugin-green.svg)](https://github.com/BepInEx/BepInEx)
-[![opencode](https://github.com/anomalyco/opencode/raw/dev/packages/console/app/src/asset/logo-ornate-dark.svg)](https://github.com/anomalyco/opencode)
-
+<a href="https://github.com/anomalyco/opencode"><img src="https://github.com/anomalyco/opencode/raw/dev/packages/console/app/src/asset/logo-ornate-dark.svg" height="20" alt="opencode"></a>
+<a href="https://opencode.ai/go?ref=X83D5WQ2NS"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='54' height='30' viewBox='0 0 54 30'%3E%3Cpath d='M24 30H0V0H24V6H6V24H18V18H12V12H24V30Z' fill='currentColor'/%3E%3Cpath d='M12 18H18V24H6V12H12V18Z' fill='currentColor' fill-opacity='0.2'/%3E%3Cpath d='M48 12V24H36V12H48Z' fill='currentColor' fill-opacity='0.2'/%3E%3Cpath d='M54 30H30V0H54V30ZM36 24H48V6H36V24Z' fill='currentColor'/%3E%3C/svg%3E" height="20" alt="OpenCode Go"></a>
+> 使用 Opencode 等工具进行构建，由 Opencode GO 提供模型支持
 
 一个用于游戏 《*放松时光：与你共享Lo-Fi故事*》 的实时天气同步 BepInEx 插件，可以根据真实世界的天气情况自动调整游戏内的环境效果，或基于现实时间模拟昼夜循环。
 
@@ -22,7 +23,9 @@
 
 ---
 
-关联我写的第二个土豆 mod：[iGPUSaviorMod](https://github.com/Small-tailqwq/iGPUSaviorMod)  
+关联我写的第二个辅助 mod：[iGPUSaviorMod](https://github.com/Small-tailqwq/iGPUSaviorMod)  
+> 依托此 MOD，可以将部分配置项目注册到游戏的设置界面，进行快捷配置。
+
 关联 BILIBILI 视频：[时间、天气与土豆](https://www.bilibili.com/video/BV1JXSiB4EP1) （<-- 评价为：纯引流，啥干货没有）
 
 
@@ -194,7 +197,7 @@ RefreshMinutes = 30
 1. 访问 [心知天气开发者平台](https://www.seniverse.com/)
 2. 注册账号并登录，转到 `控制台` - `产品管理` - `免费版`(如果你是试用版或者其他版本，请选择对应版本)
 3. 在产品管理中找到 **私钥**，复制该密钥
-4. 将该私钥填入配置文件的 `SeniverseKey` 字段，无需添加引号等特殊符号
+4. 将该 **私钥** 填入配置文件的 `SeniverseKey` 字段，无需添加引号等特殊符号
 5. 设置 `EnableWeatherSync = true` 启用天气同步
 6. 可按需配置刷新时间，避免API调用过于频繁
 7. 如有不懂之处，可以参阅 issues。
@@ -296,132 +299,8 @@ RefreshMinutes = 30
   - 各种大语言模型
 
 ## 📝 版本历史
-> 注：版本号为 AI 自己写的，不关我的事，我也不知道为啥它刷版本号为什么这么随意
 
-### v5.2.2-左右脑握手言和
-- 修复季节性彩蛋启用后，玩家手动开启的“樱花”等景色可能被自动化误关的问题
-- “季节性景色彩蛋”和“环境音效”分开控制，新增 `Automation.EnableAmbientSounds = false`
-- 樱花自动触发窗口改为 3-4 月，5 月不再自动开樱花
-
-### v5.2.1-解耦补丁终于落地
-- 完成天气同步与时间同步解耦，新增独立配置 `TimeSync.EnableTimeSync`（默认开启）
-- 新增策略层统一接管逻辑：`Cloudy` 仅在允许条件下触发
-- 修复过场剧情期间同步误介入（环境接管与彩蛋托管均加门控）
-- 优化日期栏天气显示：打开后优先复用有效缓存，没缓存时立即拉取，不再依赖手动按 `F7`
-- 补充纯逻辑测试（策略组合 + UI 文本规则），并整理工程编译入口
-
-### b5.1.4-悟一世
-- 修复了由于游戏更新导致的 mod 无法使用的错误
-  - 目前支持最新版本 v1.3.4
-- 暂时没有做其它修改，不知道是否还有其他 bug
-- 后续会针对新更新的内容同步更新 mod，但暂时还不是现在
-
-### v5.2.0-你管这叫MCP？
-- 新增 UnityExplorer MCP Bridge 插件，AI 可直接读取游戏运行时 UI 布局
-  - 8 个 MCP 工具：get_ui_hierarchy / inspect_element / search_elements / execute_code / take_screenshot 等
-  - HTTP+SSE 传输，监听 localhost:8972
-- 修复了 ApplyBaseEnvironment 跳过 ChangeTime 导致光照不切换的问题
-- 版本号统一管理：改为 `ChillEnvPlugin.PluginVersion` 单源配置
-- 完善了环境类型中文名对照表（MCP 实时读取游戏内按钮文本验证）
-
-### v5.1.3-最后的两月
-- 修复了由于游戏修正单词导致的 UI 层显示内容无法正确 hook 问题
-- 修复了由于游戏更新时间调整方法导致时间切换不生效问题
-- 修复了由于上面一堆报错导致热键不生效的问题
-- 添加了对于“转换心情”中需要通过货币解锁内容物的解锁支持
-  - 注：此配置项默认关闭，开启此配置项可能导致游戏寿命大幅缩短
-	- 开启此配置项不支持热修改，请确保修改时游戏处于关闭状态或修改后重启游戏
-	- 此配置项不影响存档，你依旧可以在关闭解锁功能后重启手动兑换道具
-- 此版本开发时间约 4小时，部分情景可能未作细致测试，如果遇到 bug，请通过 GitHub 进行反馈。
-
-### v5.1.2-老坛酸菜版（？
-- 内置了一个 KEY，当发现 KEY 异常调用时，不排除强行重置行为
-- 修复了可能导致 UI 控件无法交互的问题  
-- 修复了背景音乐在彩蛋模式激活后无法关闭的问题  
-- 修复了天气开关被错误统计到脏目录的问题  
-
-### b5.1.1
-- 添加了一个改写上午/下午的功能，现在是凌晨、清晨、上午、中午、下午、傍晚、晚上了
-
-### b5.0.1-煮饭时间到
-- 没啥变化，只是把风景啥的的枚举类丢给 Gemini 让他写上去了，这 B 这都要刷一个版本号，我服了
-- 此版本应该是游戏本体下一次更新前的定稿版本了，除非有 bug 需要修复，暂时想不到新功能了。你有好的想法也可以提出来。
-
-### v5.0.0
-- 什么？版本直接跳到 v5 了？你都干了些什么口牙！
-- 独立组件：新建一个 `SceneryAutomationSystem` 类（继承 `MonoBehaviour`），挂载在 `Runner` 上，这样它有自己的 `Update` 循环，不干扰原本的天气同步逻辑
-- 规则驱动：Gemini 它把“做饭声音”、“空调声音”、“樱花”、“烟花”等抽象成了 `SceneryRule`。这样以后我想加新彩蛋，只需要在列表里加一行配置，不用改核心代码
-- 用户防打架机制 (脏标记)：这是核心。通过 `Hook` 游戏的点击事件，一旦用户手动点过某个开关，系统就把这个开关拉入“黑名单”，本局游戏不再自动接管。(<---这不是偷懒吗？）
-- 注：彩蛋功能的触发机制举例起来比较麻烦，有能力者可以把代码丢给 AI 或者自行分析，目前只使用了部分参数进行判断，后续游戏更新后可能会根据情况进行优化。
-
-### v4.5.0
-- 添加了一个在主界面左上角日期后显示天气和温度的功能
-- 添加了一个可选配置项 `ShowWeatherOnDate`,用于控制是否在日期后追加显示天气和温度
-- 此功能需要引用 `Unity.TextMeshPro.dll`
-
-### v4.4.1-更好的天空
-- 守护了部分人的白天或者是黄昏
-- 将小雨、小雪、阵雨、阵雪这种非恶劣天气从恶劣天气名单中移除
-
-### v4.4.0
-- 守护了这片夜空
-- 重构了环境、风景推导逻辑，现在晚上永远只会是晚上，白天恶劣天气可能会是多云，也可能是白天和黄昏，谁知道呢
-
-### v4.3.1
-- 说是优化了 v4.3.0 出现问题的原因
-- 捏吗你不能修复的时候一并优化吗？
-
-### v4.3.0
-- 修复了一个在多云状态下按 `F9` 会导致所有环境被错误关闭的问题
-
-### v4.2.3-V4.2.4
-- 还是没修好，Gemini 出去
-
-### v4.2.2
-- 发现了一个在多云状态下按 `F9` 会导致所有环境被错误关闭的问题
-- 然后这 Gemini 没修好
-
-### v4.2.1
-- 添加了一个调试模式，开始尝试调整调整天气 ID 查看对应天气切换效果（什么？你现在才开始测试？！）
-- 让 Gemini 别刷版本号了
-
-### v4.2.0
-- 修复了一个按 `F7` 没反应的问题，加了个输出说是
-
-### v3.7.0-v4.1.0-外地AI刷版本号来了
-- 优化 `F9` 按键逻辑，优化日志提示
-- 修复偶发日志卡死的状态，即使不影响使用
-- 修复之前和AI沟通的错误：它一直以为黄昏要提前1小时切换，实际上是30分钟
-- 优化切换逻辑（真是优化？）
-
-> 缓存逻辑是这样的：
-> - 数据存储：有一个静态变量 `_cachedWeather` 存在内存里。
-> - 有效期：60 分钟 (`TimeSpan.FromMinutes(60)`).
-> - 快钟 (30 秒一次)：
-> 	- 只读缓存。如果缓存里有数据，直接拿来用，不发网络请求（不费流量）。
-> 	- 它会利用缓存里的“晴/雨”状态，重新结合“当前每一秒的时间”来判断是否该日落了。
-> 	- 注：本来想让 AI 写定时器的，但是 AI 说不如这个，我不懂所以听他的
-> - 慢钟 (30 分钟一次)：
-> 	- 强制更新。即使缓存没过期（60 分钟），只要到了用户设定的刷新间隔（默认 30 分钟），就会尝试发起新的 API 请求来刷新数据。
-
-### v3.6.0-不想开挂？满足你
-- 增加解锁所有环境和装饰品可选配置项
-
-### v3.5.0-估摸着能跑版
-- 优化按钮逻辑，采用模拟点击 `MainIcon` 方式
-- 修复环境切换可能不生效的问题
-- 改进代码结构和日志输出
-
-### v3.4.x
-- 修复部分天气效果无法关闭的问题
-- 优化环境互斥逻辑
-
-### v3.3.0 及更早版本
-- 分析源码、分析环境开关逻辑、分析景色开关逻辑
-- 初始版本开发
-- 谁能想到用了3个不同厂商的不同AI写了一天才写出来，我累死了
-
-详细更新日志请查看 [Git 提交记录](https://github.com/Small-tailqwq/RealTimeWeatherMod/commits/master)
+详细更新日志请查看 [CHANGELOG.md](./CHANGELOG.md) 及 [Git 提交记录](https://github.com/Small-tailqwq/RealTimeWeatherMod/commits/master)
 
 ## 🐛 已知问题
 
@@ -458,11 +337,12 @@ RefreshMinutes = 30
 - Harmony 补丁库
 - Duvet
 - 心知天气 API 服务
-- Google Gemini3Pro
 - Github Copilot
-- Claude Sonnet and Ops 4.5
-- OpenAI ChatGPT5.1
-- Github Copilot
+  - 再见了，所有的 Copilot
+- 谷、O、A御三家
+- Opencode GO
+	- 性价比最高的 coding plan
+
 
 ---
 
