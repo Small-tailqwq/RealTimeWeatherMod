@@ -94,6 +94,7 @@ namespace ChillWithYou.EnvSync.Services
 
             if (!force && HasValidCacheNormalized(cacheKey))
             {
+                LastFetchSucceeded = true;
                 onComplete?.Invoke(_cachedWeather);
                 yield break;
             }
