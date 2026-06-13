@@ -460,6 +460,7 @@ namespace ChillWithYou.EnvSync.Core
                 _pendingStartupWeather = WeatherService.CachedWeather;
                 _startupWeatherFetchFinished = true;
                 UpdateUiWeatherString(_pendingStartupWeather);
+                CheckAndSyncSunSchedule();
             }
             else if (needWeatherFetch)
             {
@@ -475,12 +476,17 @@ namespace ChillWithYou.EnvSync.Core
                         {
                             _pendingStartupWeather = weather;
                             UpdateUiWeatherString(weather);
+                            if (WeatherService.LastFetchSucceeded)
+                            {
+                                CheckAndSyncSunSchedule();
+                            }
                         }
                     }));
             }
             else
             {
                 _startupWeatherFetchFinished = true;
+                CheckAndSyncSunSchedule();
             }
 
             float timeout = 30f;

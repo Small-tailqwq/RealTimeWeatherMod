@@ -247,16 +247,16 @@ namespace ChillWithYou.EnvSync.Services
 
         private static WeatherInfo ParseOpenMeteoWeatherJson(string json)
         {
-            string current = ExtractObject(json, "\"current\":{");
+            string current = ExtractObjectProperty(json, "\"current\"");
             if (string.IsNullOrEmpty(current)) return null;
 
-            int weatherCode = ExtractIntNumberValue(current, "\"weather_code\":");
-            double temperature = ExtractDoubleValue(current, "\"temperature_2m\":");
-            double precipitation = ExtractDoubleValue(current, "\"precipitation\":");
-            double rain = ExtractDoubleValue(current, "\"rain\":");
-            double showers = ExtractDoubleValue(current, "\"showers\":");
-            double snowfall = ExtractDoubleValue(current, "\"snowfall\":");
-            double cloudCover = ExtractDoubleValue(current, "\"cloud_cover\":");
+            int weatherCode = ExtractIntNumberValue(current, "\"weather_code\"");
+            double temperature = ExtractDoubleValue(current, "\"temperature_2m\"");
+            double precipitation = ExtractDoubleValue(current, "\"precipitation\"");
+            double rain = ExtractDoubleValue(current, "\"rain\"");
+            double showers = ExtractDoubleValue(current, "\"showers\"");
+            double snowfall = ExtractDoubleValue(current, "\"snowfall\"");
+            double cloudCover = ExtractDoubleValue(current, "\"cloud_cover\"");
 
             return OpenMeteoWeatherMapper.Map(
                 weatherCode,
@@ -402,16 +402,19 @@ namespace ChillWithYou.EnvSync.Services
             string val = json.Substring(start, end - start); int.TryParse(val, out int res); return res;
         }
 
-        private static int ExtractIntNumberValue(string json, string prefix)
+        private static int ExtractIntNumberValue(string json, string propertyName)
         {
-            return (int)Math.Round(ExtractDoubleValue(json, prefix));
+            return (int)Math.Round(ExtractDoubleValue(json, propertyName));
         }
 
-        private static double ExtractDoubleValue(string json, string prefix)
+        private static double ExtractDoubleValue(string json, string propertyName)
         {
-            int start = json.IndexOf(prefix, StringComparison.Ordinal);
+            int start = json.IndexOf(propertyName, StringComparison.Ordinal);
             if (start < 0) return 0d;
-            start += prefix.Length;
+
+            int colon = json.IndexOf(':', start + propertyName.Length);
+            if (colon < 0) return 0d;
+            start = colon + 1;
 
             while (start < json.Length && char.IsWhiteSpace(json[start]))
             {
@@ -452,11 +455,16 @@ namespace ChillWithYou.EnvSync.Services
             return json.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
         }
 
-        private static string ExtractObject(string json, string prefix)
+        private static string ExtractObjectProperty(string json, string propertyName)
         {
-            int start = json.IndexOf(prefix, StringComparison.Ordinal);
+            int nameStart = json.IndexOf(propertyName, StringComparison.Ordinal);
+            if (nameStart < 0) return null;
+
+            int colon = json.IndexOf(':', nameStart + propertyName.Length);
+            if (colon < 0) return null;
+
+            int start = json.IndexOf('{', colon + 1);
             if (start < 0) return null;
-            start += prefix.Length - 1;
 
             int depth = 0;
             bool inString = false;
