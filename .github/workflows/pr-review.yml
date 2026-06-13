@@ -1,0 +1,150 @@
+name: PR Review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    if: |
+      (github.event_name == 'pull_request_target') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/review') &&
+       contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-review-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Resolve review context
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+            PR="${{ github.event.pull_request.number }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            BASE_REF="${{ github.base_ref }}"
+          else
+            PR="${{ github.event.issue.number }}"
+            HEAD_SHA=$(gh pr view "$PR" --json headRefOid -q .headRefOid)
+            BASE_REF=$(gh pr view "$PR" --json baseRefName -q .baseRefName)
+          fi
+          echo "pr=$PR" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_ref=$BASE_REF" >> $GITHUB_OUTPUT
+          echo "[ctx] PR=#$PR base=$BASE_REF head=$HEAD_SHA"
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - run: |
+          git fetch origin "pull/${{ steps.ctx.outputs.pr }}/head"
+          git checkout FETCH_HEAD
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Open Code Review
+        run: npm install -g @alibaba-group/open-code-review
+
+      - name: Run review
+        id: review
+        env:
+          OCR_LLM_URL: https://opencode.ai/zen/go/v1
+          OCR_LLM_TOKEN: ${{ secrets.DEEPSEEK_API_KEY }}
+          OCR_LLM_MODEL: deepseek-v4-pro
+          OCR_USE_ANTHROPIC: 'false'
+        run: |
+          ocr review \
+            --from "origin/${{ steps.ctx.outputs.base_ref }}" \
+            --to "HEAD" \
+            --audience agent \
+            --format json \
+            --background "C# Unity BepInEx mod for Chill With You Lo-Fi Story. RealTimeWeatherMod/ (plugin: Core/automation, Patches/Harmony, Services/API, Models/DTO), UnityExplorerMcp/ (MCP bridge), tests/ (xUnit .NET 9). Critical: Unity main thread safety, Harmony patch non-destructiveness, IDisposable cleanup, null safety, API key protection." \
+            > /tmp/review.json 2>/tmp/review-stderr.log
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Dump review output
+        if: always()
+        run: |
+          echo "=== STDOUT ===" && cat /tmp/review.json || echo "(empty)"
+          echo "=== STDERR ===" && cat /tmp/review-stderr.log || echo "(empty)"
+
+      - name: Post review comments
+        if: steps.review.outputs.exit_code == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.ctx.outputs.pr }}
+          HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, subprocess, sys
+
+          pr_number = os.environ["PR_NUMBER"]
+          head_sha = os.environ["HEAD_SHA"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+
+          try:
+              with open("/tmp/review.json") as f:
+                  data = json.load(f)
+          except (FileNotFoundError, json.JSONDecodeError) as e:
+              sys.exit(f"Failed to read review output: {e}")
+
+          if isinstance(data, list):
+              comments = data
+          elif isinstance(data, dict):
+              comments = data.get("comments") or data.get("results") or []
+          else:
+              comments = []
+
+          if not comments:
+              print("No review comments to post.")
+              sys.exit(0)
+
+          posted = 0
+          for c in comments:
+              path = c.get("path", "")
+              content = c.get("content", "")
+              if not path or not content:
+                  continue
+
+              body = content
+              suggestion = c.get("suggestion_code", "")
+              if suggestion:
+                  body += f"\n\n```suggestion\n{suggestion}\n```"
+
+              cmd = [
+                  "gh", "api", "--method", "POST",
+                  "-H", "Accept: application/vnd.github+json",
+                  f"/repos/{repo}/pulls/{pr_number}/comments",
+                  "-f", f"body={body}",
+                  "-f", f"commit_id={head_sha}",
+                  "-f", f"path={path}",
+                  "-f", "side=RIGHT",
+              ]
+              start = c.get("start_line", 0)
+              if start and start > 0:
+                  cmd.extend(["-f", f"line={start}"])
+              end = c.get("end_line", 0)
+              if end and end > start:
+                  cmd.extend(["-f", f"end_line={end}"])
+
+              result = subprocess.run(cmd, capture_output=True, text=True)
+              if result.returncode == 0:
+                  posted += 1
+              else:
+                  print(f"WARN: failed to post ({path}): {result.stderr[:200]}", file=sys.stderr)
+
+          print(f"Posted {posted}/{len(comments)} review comments.")
+          PYEOF

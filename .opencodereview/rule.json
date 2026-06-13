@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {
+      "path": "**/*.cs",
+      "rule": "C# Unity BepInEx mod (RealTimeWeatherMod). Target: .NET Framework 4.7.2 / .NET 9. Check for: null reference exceptions (NullReferenceException, argument null checks), IDisposable resources not disposed (IDE events, network clients, file handles), Unity main thread safety (GameObject/Component access must be on main thread), Harmony patch safety (prefix/postfix should not break original method contract), exception swallowing (empty catch blocks), API key exposure (KeySecurity.cs, WeatherService.cs - never log or hardcode API keys). Prefer 'using' statements for IDisposable."
+    },
+    {
+      "path": "RealTimeWeatherMod/Core/**/*.cs",
+      "rule": "Core automation logic: AutoEnvRunner, SceneryAutomationSystem, state codecs. Check for: state consistency across weather/environment transitions, thread safety in async weather polling, proper cleanup on plugin disable. The CombinedEnvironmentStatePolicy merges multiple environment states - verify merge logic doesn't drop or override states incorrectly."
+    },
+    {
+      "path": "RealTimeWeatherMod/Patches/**/*.cs",
+      "rule": "Harmony patches: must be non-destructive. Prefix returning false skips original - ensure intentional. Postfix must not mutate state that original depends on. Transpiler patches must preserve stack balance and exception handling boundaries. Keep patches minimal to avoid compatibility issues with other mods."
+    },
+    {
+      "path": "RealTimeWeatherMod/Services/**/*.cs",
+      "rule": "Services layer: WeatherService (API calls), DecorationUnlockScanner. Check: HTTP client timeouts and disposal, API response deserialization safety (null/empty handling), retry logic for network failures, sensitive data handling (API keys via KeySecurity)."
+    },
+    {
+      "path": "UnityExplorerMcp/**/*.cs",
+      "rule": "MCP bridge for Unity Explorer. Check: main thread marshaling (MainThreadDispatcher), code evaluation safety (CSharpEvaluator - code injection risks), JSON serialization correctness, console capture edge cases, screenshot memory management."
+    },
+    {
+      "path": "**/*Tests*/**/*.cs",
+      "rule": "xUnit tests: check that test methods are properly structured (Arrange/Act/Assert), mocks/stubs are correctly set up, edge cases are covered (null inputs, empty collections, boundary values). Tests should be independent and not rely on execution order."
+    }
+  ]
+}
