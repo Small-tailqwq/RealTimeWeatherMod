@@ -108,12 +108,7 @@ namespace ChillWithYou.EnvSync.Services
 
         private static WeatherCondition ToCondition(int normalizedCode)
         {
-            if (normalizedCode >= 0 && normalizedCode <= 3) return WeatherCondition.Clear;
-            if (normalizedCode >= 4 && normalizedCode <= 9) return WeatherCondition.Cloudy;
-            if (normalizedCode >= 10 && normalizedCode <= 20) return WeatherCondition.Rainy;
-            if (normalizedCode >= 21 && normalizedCode <= 25) return WeatherCondition.Snowy;
-            if (normalizedCode >= 26 && normalizedCode <= 36) return WeatherCondition.Foggy;
-            return WeatherCondition.Unknown;
+            return WeatherService.MapCodeToCondition(normalizedCode);
         }
 
         private static string ToWeatherText(int weatherCode, int normalizedCode)
