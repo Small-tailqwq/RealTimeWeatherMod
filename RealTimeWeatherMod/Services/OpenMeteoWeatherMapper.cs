@@ -59,7 +59,8 @@ namespace ChillWithYou.EnvSync.Services
                 return 26;
             }
 
-            if (weatherCode >= 1 && weatherCode <= 3 || cloudCover >= 65d)
+            // Codes 1-3 (partly cloudy/overcast) or clear sky with high measured cloud cover → Cloudy
+            if ((weatherCode >= 1 && weatherCode <= 3) || cloudCover >= 65d)
             {
                 return 4;
             }
