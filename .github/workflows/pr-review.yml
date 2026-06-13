@@ -59,6 +59,7 @@ jobs:
 
       - name: Run review
         id: review
+        timeout-minutes: 20
         env:
           OCR_LLM_URL: https://opencode.ai/zen/go/v1
           OCR_LLM_TOKEN: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -70,6 +71,8 @@ jobs:
             --to "HEAD" \
             --audience agent \
             --format json \
+            --concurrency 2 \
+            --timeout 15 \
             --background "C# Unity BepInEx mod for Chill With You Lo-Fi Story. RealTimeWeatherMod/ (plugin: Core/automation, Patches/Harmony, Services/API, Models/DTO), UnityExplorerMcp/ (MCP bridge), tests/ (xUnit .NET 9). Critical: Unity main thread safety, Harmony patch non-destructiveness, IDisposable cleanup, null safety, API key protection." \
             > /tmp/review.json 2>/tmp/review-stderr.log
           echo "exit_code=$?" >> $GITHUB_OUTPUT
