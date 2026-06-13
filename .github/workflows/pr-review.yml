@@ -1,4 +1,18 @@
+# RealTimeWeatherMod - PR Review via OpenCodeReview
+#
+# Adapted from https://github.com/alibaba/open-code-review/tree/main/examples/github_actions
+#
+# Triggers:
+#   - PR opened/synchronized (pull_request_target for fork secret access)
+#   - Comment on PR starting with /review
+#
+# Required secret: DEEPSEEK_API_KEY
+
 name: PR Review
+
+concurrency:
+  group: pr-review-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
 
 on:
   pull_request_target:
@@ -6,148 +20,269 @@ on:
   issue_comment:
     types: [created]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   review:
     if: |
       (github.event_name == 'pull_request_target') ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.pull_request &&
-       startsWith(github.event.comment.body, '/review') &&
-       contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/review'))
     runs-on: ubuntu-latest
-    concurrency:
-      group: pr-review-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: true
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
-      - name: Resolve review context
-        id: ctx
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
-            PR="${{ github.event.pull_request.number }}"
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-            BASE_REF="${{ github.base_ref }}"
-          else
-            PR="${{ github.event.issue.number }}"
-            HEAD_SHA=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid -q .headRefOid)
-            BASE_REF=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json baseRefName -q .baseRefName)
-          fi
-          echo "pr=$PR" >> $GITHUB_OUTPUT
-          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
-          echo "base_ref=$BASE_REF" >> $GITHUB_OUTPUT
-          echo "[ctx] PR=#$PR base=$BASE_REF head=$HEAD_SHA"
+      - name: Get PR context (for comment triggers)
+        id: pr-context
+        if: github.event_name != 'pull_request_target'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            core.setOutput('base_ref', pullRequest.base.ref);
+            core.setOutput('head_sha', pullRequest.head.sha);
 
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || steps.pr-context.outputs.head_sha }}
 
-      - run: |
-          git fetch origin "pull/${{ steps.ctx.outputs.pr }}/head"
-          git checkout FETCH_HEAD
+      - name: Fetch PR head ref
+        run: git fetch origin pull/${{ github.event.pull_request.number || github.event.issue.number }}/head
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Open Code Review
+      - name: Install OpenCodeReview
         run: npm install -g @alibaba-group/open-code-review
+
+      - name: Configure OCR
+        run: |
+          ocr config set llm.url https://opencode.ai/zen/go/v1
+          ocr config set llm.auth_token ${{ secrets.DEEPSEEK_API_KEY }}
+          ocr config set llm.model deepseek-v4-pro
+          ocr config set llm.use_anthropic false
 
       - name: Run review
         id: review
         timeout-minutes: 20
-        env:
-          OCR_LLM_URL: https://opencode.ai/zen/go/v1
-          OCR_LLM_TOKEN: ${{ secrets.DEEPSEEK_API_KEY }}
-          OCR_LLM_MODEL: deepseek-v4-pro
-          OCR_USE_ANTHROPIC: 'false'
         run: |
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_REF="${{ steps.pr-context.outputs.base_ref }}"
+            HEAD_SHA="${{ steps.pr-context.outputs.head_sha }}"
+          fi
+
+          echo "Reviewing PR: ${HEAD_SHA} against origin/${BASE_REF}"
+
           ocr review \
-            --from "origin/${{ steps.ctx.outputs.base_ref }}" \
-            --to "HEAD" \
+            --from "origin/${BASE_REF}" \
+            --to "${HEAD_SHA}" \
             --audience agent \
             --format json \
             --concurrency 2 \
             --timeout 15 \
             --background "C# Unity BepInEx mod for Chill With You Lo-Fi Story. RealTimeWeatherMod/ (plugin: Core/automation, Patches/Harmony, Services/API, Models/DTO), UnityExplorerMcp/ (MCP bridge), tests/ (xUnit .NET 9). Critical: Unity main thread safety, Harmony patch non-destructiveness, IDisposable cleanup, null safety, API key protection." \
-            > /tmp/review.json 2>/tmp/review-stderr.log
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
+            > /tmp/ocr-result.json 2>/tmp/ocr-stderr.log || true
 
       - name: Dump review output
         if: always()
         run: |
-          echo "=== STDOUT ===" && cat /tmp/review.json || echo "(empty)"
-          echo "=== STDERR ===" && cat /tmp/review-stderr.log || echo "(empty)"
+          echo "=== STDOUT ===" && cat /tmp/ocr-result.json || echo "(empty)"
+          echo "=== STDERR ===" && cat /tmp/ocr-stderr.log || echo "(empty)"
 
       - name: Post review comments
-        if: steps.review.outputs.exit_code == '0'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.ctx.outputs.pr }}
-          HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
-        run: |
-          python3 << 'PYEOF'
-          import json, os, subprocess, sys
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
 
-          pr_number = os.environ["PR_NUMBER"]
-          head_sha = os.environ["HEAD_SHA"]
-          repo = os.environ["GITHUB_REPOSITORY"]
+            let result;
+            try {
+              const raw = fs.readFileSync('/tmp/ocr-result.json', 'utf8');
+              result = JSON.parse(raw);
+            } catch (e) {
+              console.log('Failed to parse OCR output:', e.message);
+              const stderr = fs.existsSync('/tmp/ocr-stderr.log')
+                ? fs.readFileSync('/tmp/ocr-stderr.log', 'utf8').trim()
+                : '';
+              if (stderr) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: `⚠️ **OpenCodeReview** encountered an error:\n${fencedBlock(stderr)}`
+                });
+              }
+              return;
+            }
 
-          try:
-              with open("/tmp/review.json") as f:
-                  data = json.load(f)
-          except (FileNotFoundError, json.JSONDecodeError) as e:
-              sys.exit(f"Failed to read review output: {e}")
+            const comments = result.comments || [];
+            const warnings = result.warnings || [];
 
-          if isinstance(data, list):
-              comments = data
-          elif isinstance(data, dict):
-              comments = data.get("comments") or data.get("results") or []
-          else:
-              comments = []
+            if (comments.length === 0) {
+              const message = result.message || 'No issues found.';
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `✅ **OpenCodeReview**: ${message}`
+              });
+              return;
+            }
 
-          if not comments:
-              print("No review comments to post.")
-              sys.exit(0)
+            const prNumber = context.issue.number;
+            let commitSha;
+            if (context.eventName === 'pull_request_target') {
+              commitSha = context.payload.pull_request.head.sha;
+            } else {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              commitSha = pr.head.sha;
+            }
 
-          posted = 0
-          for c in comments:
-              path = c.get("path", "")
-              content = c.get("content", "")
-              if not path or not content:
-                  continue
+            const reviewComments = [];
+            const commentsWithoutLine = [];
 
-              body = content
-              suggestion = c.get("suggestion_code", "")
-              if suggestion:
-                  body += f"\n\n```suggestion\n{suggestion}\n```"
+            for (const comment of comments) {
+              const body = formatComment(comment);
+              const hasValidLine = (comment.start_line >= 1) || (comment.end_line >= 1);
 
-              cmd = [
-                  "gh", "api", "--method", "POST",
-                  "-H", "Accept: application/vnd.github+json",
-                  f"/repos/{repo}/pulls/{pr_number}/comments",
-                  "-f", f"body={body}",
-                  "-f", f"commit_id={head_sha}",
-                  "-f", f"path={path}",
-                  "-f", "side=RIGHT",
-              ]
-              start = c.get("start_line", 0)
-              if start and start > 0:
-                  cmd.extend(["-f", f"line={start}"])
-              end = c.get("end_line", 0)
-              if end and end > start:
-                  cmd.extend(["-f", f"end_line={end}"])
+              if (!hasValidLine) {
+                commentsWithoutLine.push({ comment, body });
+                continue;
+              }
 
-              result = subprocess.run(cmd, capture_output=True, text=True)
-              if result.returncode == 0:
-                  posted += 1
-              else:
-                  print(f"WARN: failed to post ({path}): {result.stderr[:200]}", file=sys.stderr)
+              const rc = { path: comment.path, body };
 
-          print(f"Posted {posted}/{len(comments)} review comments.")
-          PYEOF
+              if (comment.start_line >= 1 && comment.end_line >= 1 && comment.start_line !== comment.end_line) {
+                rc.start_line = comment.start_line;
+                rc.line = comment.end_line;
+                rc.start_side = 'RIGHT';
+                rc.side = 'RIGHT';
+              } else if (comment.end_line >= 1) {
+                rc.line = comment.end_line;
+                rc.side = 'RIGHT';
+              } else {
+                rc.line = comment.start_line;
+                rc.side = 'RIGHT';
+              }
+
+              reviewComments.push({ comment, reviewComment: rc });
+            }
+
+            let summaryBody = `🔍 **OpenCodeReview** found **${comments.length}** issue(s).`;
+            summaryBody += `\n- ✅ ${reviewComments.length} inline comment(s)`;
+            summaryBody += `\n- 📝 ${commentsWithoutLine.length} in summary`;
+            if (warnings.length > 0) {
+              summaryBody += `\n\n⚠️ ${warnings.length} warning(s) during review.`;
+            }
+
+            for (const { comment } of commentsWithoutLine) {
+              summaryBody += '\n\n---\n\n';
+              summaryBody += formatSummaryEntry(comment);
+            }
+
+            try {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                commit_id: commitSha,
+                body: summaryBody,
+                event: 'COMMENT',
+                comments: reviewComments.map(({ reviewComment }) => reviewComment)
+              });
+              console.log(`Posted review with ${reviewComments.length} inline comments`);
+            } catch (e) {
+              console.log('Batch review failed, posting individually:', e.message);
+
+              let posted = 0;
+              const failed = [];
+              for (const { comment, reviewComment } of reviewComments) {
+                try {
+                  await github.rest.pulls.createReview({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber,
+                    commit_id: commitSha,
+                    body: '',
+                    event: 'COMMENT',
+                    comments: [reviewComment]
+                  });
+                  posted++;
+                } catch (inner) {
+                  failed.push({ comment, error: inner.message });
+                  console.log(`Failed: ${reviewComment.path} — ${inner.message}`);
+                }
+              }
+
+              let finalBody = `🔍 **OpenCodeReview** found **${comments.length}** issue(s).`;
+              finalBody += `\n- ✅ ${posted} inline comment(s)`;
+              finalBody += `\n- 📝 ${commentsWithoutLine.length + failed.length} in summary`;
+              if (warnings.length > 0) {
+                finalBody += `\n\n⚠️ ${warnings.length} warning(s).`;
+              }
+
+              for (const { comment } of commentsWithoutLine) {
+                finalBody += '\n\n---\n\n';
+                finalBody += formatSummaryEntry(comment);
+              }
+              for (const { comment, error } of failed) {
+                finalBody += '\n\n---\n\n';
+                finalBody += `### 📄 \`${comment.path}\``;
+                if (comment.start_line >= 1) finalBody += ` (L${comment.start_line})`;
+                finalBody += `\n\n⚠️ Failed to post inline: ${error}\n\n${comment.content || ''}`;
+              }
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: finalBody
+              });
+            }
+
+            function formatComment(comment) {
+              let body = comment.content || '';
+              if (comment.suggestion_code && comment.existing_code) {
+                body += '\n\n**Suggestion:**\n';
+                body += fencedBlock(comment.suggestion_code, 'suggestion');
+              }
+              return body;
+            }
+
+            function formatSummaryEntry(comment) {
+              let md = `### 📄 \`${comment.path}\``;
+              if (comment.start_line >= 1 && comment.end_line >= 1) {
+                md += ` (L${comment.start_line}-L${comment.end_line})`;
+              }
+              md += '\n\n' + (comment.content || '');
+              if (comment.suggestion_code) {
+                md += '\n\n<details><summary>💡 Suggested Change</summary>\n\n';
+                md += fencedBlock(comment.suggestion_code) + '\n';
+                md += '</details>';
+              }
+              return md;
+            }
+
+            function fencedBlock(content, language) {
+              language = language || '';
+              const text = String(content || '');
+              const matches = text.match(/`+/g) || [];
+              const maxTicks = Math.max(3, ...matches.map(t => t.length)) + 1;
+              const fence = '`'.repeat(maxTicks);
+              return fence + language + '\n' + text + (text.endsWith('\n') ? '' : '\n') + fence;
+            }
