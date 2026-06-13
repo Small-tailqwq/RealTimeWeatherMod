@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Test OCR review pipeline for C# project
+using System;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
