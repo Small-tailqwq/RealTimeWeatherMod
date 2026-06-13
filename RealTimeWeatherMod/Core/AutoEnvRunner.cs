@@ -15,6 +15,7 @@ namespace ChillWithYou.EnvSync.Core
         private EnvironmentType? _lastAppliedEnv;
         private bool _isFetching;
         private bool _pendingForceRefresh;
+        private bool _isSunSyncRunning;
 
         private static AutoEnvRunner _instance;
 
@@ -44,7 +45,7 @@ namespace ChillWithYou.EnvSync.Core
         private bool HasUsableApiKey()
         {
             string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
-            return !string.IsNullOrEmpty(apiKey) || WeatherService.HasDefaultKey;
+            return WeatherService.HasUsableProvider(ChillEnvPlugin.Cfg_WeatherProvider.Value, apiKey);
         }
 
         private void UpdateUiWeatherString(WeatherInfo weather)
@@ -94,6 +95,11 @@ namespace ChillWithYou.EnvSync.Core
                 return;
             }
 
+            if (_isSunSyncRunning)
+            {
+                return;
+            }
+
             string lastSync = ChillEnvPlugin.Cfg_LastSunSyncDate.Value;
             string today = DateTime.Now.ToString("yyyy-MM-dd");
 
@@ -105,6 +111,7 @@ namespace ChillWithYou.EnvSync.Core
 
         private System.Collections.IEnumerator SyncSunScheduleRoutine(string targetDate)
         {
+            _isSunSyncRunning = true;
             int retryCount = 0;
             float delay = 1f;
             const int MaxRetries = 10;
@@ -132,6 +139,7 @@ namespace ChillWithYou.EnvSync.Core
 
                 if (success)
                 {
+                    _isSunSyncRunning = false;
                     yield break;
                 }
 
@@ -143,6 +151,7 @@ namespace ChillWithYou.EnvSync.Core
             }
 
             ChillEnvPlugin.Log?.LogError("[SunSync] 达到最大重试次数，今日放弃同步");
+            _isSunSyncRunning = false;
         }
 
         private void Update()
@@ -325,6 +334,11 @@ namespace ChillWithYou.EnvSync.Core
                             UpdateUiWeatherString(weather);
                             if (weather != null)
                             {
+                                if (WeatherService.LastFetchSucceeded)
+                                {
+                                    CheckAndSyncSunSchedule();
+                                }
+
                                 ScheduleNextWeatherCheckFromCache(location);
                             }
                             else
@@ -377,6 +391,11 @@ namespace ChillWithYou.EnvSync.Core
                         ApplyByPolicy(policy, weather, forceApply);
                         if (weather != null)
                         {
+                            if (WeatherService.LastFetchSucceeded)
+                            {
+                                CheckAndSyncSunSchedule();
+                            }
+
                             ScheduleNextWeatherCheckFromCache(location);
                         }
                         else
