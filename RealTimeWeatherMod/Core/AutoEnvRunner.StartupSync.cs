@@ -476,10 +476,16 @@ namespace ChillWithYou.EnvSync.Core
                         {
                             _pendingStartupWeather = weather;
                             UpdateUiWeatherString(weather);
-                            if (WeatherService.LastFetchSucceeded)
-                            {
-                                CheckAndSyncSunSchedule();
-                            }
+                    (weather) =>
+                    {
+                        _startupWeatherFetchFinished = true;
+                        if (weather != null)
+                        {
+                            _pendingStartupWeather = weather;
+                            UpdateUiWeatherString(weather);
+                        }
+                        CheckAndSyncSunSchedule();
+                    }
                         }
                     }));
             }
