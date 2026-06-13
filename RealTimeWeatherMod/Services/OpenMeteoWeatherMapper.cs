@@ -119,7 +119,7 @@ namespace ChillWithYou.EnvSync.Services
             if (normalizedCode == 13) return "LightRain";
             if (normalizedCode == 26) return "Fog";
             if (normalizedCode == 4) return "Cloudy";
-            return weatherCode == 0 ? "Clear" : "OpenMeteo";
+            return weatherCode == 0 ? "Clear" : $"OpenMeteo({weatherCode})";
         }
     }
 }
