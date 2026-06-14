@@ -9,11 +9,11 @@ A BepInEx plugin for the game *Chill with You - Lo-Fi Story*. It automatically s
 
 ---
 
-### 📢 Important Note for International Users (OpenWeather Support)
+### 📢 Important Note for International Users
 
-> **Looking for OpenWeatherMap support?**
-> This version is optimized for users in China (using the **Seniverse** API).
-> If you need **OpenWeather** support or better localization for non-Chinese regions, please check out this excellent fork by the community:
+> **OpenMeteo support is now built in.**
+> This mod can use either **Seniverse** or **OpenMeteo** as the weather provider.
+> If you specifically need **OpenWeatherMap** support or a fork focused on English localization, you can still check out this community fork:
 >
 > 👉 **[danlok10/RealTimeWeatherMod-EN](https://github.com/danlok10/RealTimeWeatherMod-EN)**
 > *(They grew out of this codebase like a digital plant!)*
@@ -41,8 +41,8 @@ Related Bilibili video: [Time, Weather, and Potatoes](https://www.bilibili.com/v
 
 ## ✨ Main Features
 
-- 🌤️ **Real-time weather sync**: Fetches weather data from Seniverse API and updates in-game environment automatically.
-- 🌍 **Multi-city support**: Supports weather lookup for any city (Pinyin or Chinese).
+- 🌤️ **Real-time weather sync**: Fetches weather data from Seniverse or OpenMeteo and updates in-game environment automatically.
+- 🌍 **City/coordinate support**: Seniverse supports city names or `ip` auto-location; OpenMeteo supports latitude/longitude.
 - 🌓 **Day/night cycle**: Auto switches between Day/Sunset/Night based on configured sunrise and sunset time.
 - 🧭 **Decoupled sync toggles**: Weather sync and time sync are now independently switchable.
 - 🔓 **Unlock all environments**: Unlocks all environments and decorations in current session.
@@ -53,7 +53,7 @@ Related Bilibili video: [Time, Weather, and Potatoes](https://www.bilibili.com/v
     - `UnlockPurchasableItems`: Unlock all in-game currency purchases.
 - ⌨️ **Hotkeys**:
   - `F7` - Force refresh weather.
-    - Ignores cache and fetches latest weather from Seniverse API.
+    - Ignores cache and fetches latest weather from the currently selected provider.
     - Resets API slow timer.
   - `F8` - Show current status.
     - Prints a status log line.
@@ -193,18 +193,32 @@ UnlockPurchasableItems = false
 [WeatherAPI]
 ## Enable weather API sync | Most features need this enabled
 EnableWeatherSync = false
+## Weather provider: Seniverse or OpenMeteo
+WeatherProvider = OpenMeteo
 ## Seniverse API key | v5.1.2+ can use built-in key when left empty
 SeniverseKey =
-## City name (Pinyin or Chinese, e.g. beijing, 上海). Use ip for auto locate
+## Seniverse city name (Pinyin or Chinese, e.g. beijing, 上海). Use ip for auto locate
 Location = beijing
+## OpenMeteo latitude, valid range [-90, 90]
+Latitude = 39.9042
+## OpenMeteo longitude, valid range [-180, 180]
+Longitude = 116.4074
 
 
 [WeatherSync]
 ## API refresh interval in minutes | Leave as is unless debugging
 RefreshMinutes = 30
+## Weather cache lifetime in minutes | Leave as is unless debugging
+CacheExpiryMinutes = 60
 ```
 
-### Get Seniverse API Key
+### Weather Provider Selection
+
+- `WeatherProvider = Seniverse`: use Seniverse. `Location` is used; `SeniverseKey` may be left empty to use the built-in key.
+- `WeatherProvider = OpenMeteo`: use OpenMeteo. `Latitude` / `Longitude` are used; no API key is required.
+- If a recent [iGPUSaviorMod](https://github.com/Small-tailqwq/iGPUSaviorMod) is installed, the in-game settings page shows provider-specific fields automatically: city input for Seniverse, latitude/longitude inputs for OpenMeteo.
+
+### Get Seniverse API Key (Optional)
 
 > 💡 New versions include a built-in key, so leaving it empty still works. Applying your own key is optional.
 
@@ -228,7 +242,7 @@ Plugin auto switches environment by configured sunrise/sunset:
 
 ### Weather Sync Mode (Optional)
 
-1. Configure API key as above.
+1. Select a weather provider as above, then configure either city or coordinates.
 2. Plugin fetches weather periodically (default every 30 minutes).
 
 3. Environment mapping:
@@ -266,17 +280,17 @@ Plugin auto switches environment by configured sunrise/sunset:
 
 - **F7: Force weather refresh (skip cache)**
   - Core purpose:
-    - Ignore cache and fetch latest weather from Seniverse API.
+    - Ignore cache and fetch latest weather from the currently selected provider.
     - Reset API slow timer.
   - Trigger behavior:
     1. Reset timer for next auto API call.
-    2. Ignore `CacheExpiry` (60-min cache), send HTTP request to `api.seniverse.com` directly.
+    2. Ignore `CacheExpiryMinutes`, send HTTP request to Seniverse or OpenMeteo directly.
     3. If success, replace in-memory `_cachedWeather`.
     4. Auto call `ApplyEnvironment` to update scene.
   - Recommended when:
     - Real weather changed but game still shows old weather.
     - You want to test API connectivity.
-    - You changed `Location` and want immediate effect.
+    - You changed `Location`, `Latitude`, or `Longitude` and want immediate effect.
 
 - **F8: Print current environment status**
   - Writes one status log line.
@@ -312,6 +326,15 @@ Plugin auto switches environment by configured sunrise/sunset:
 ## 📝 Version History
 
 > Note: Version numbers are generated by AI and may look random.
+
+### Unreleased - PR #11 OpenMeteo Provider
+
+- Added `WeatherAPI.WeatherProvider` with `Seniverse` and `OpenMeteo` options.
+- Added OpenMeteo latitude/longitude config fields and provider-specific in-game settings visibility.
+- Added OpenMeteo weather code mapping and pure-logic tests.
+- Improved weather/sunrise-sunset logs so the active provider is clear.
+- Guarded sunrise/sunset retry coroutines against overlapping retry loops.
+- Added coordinate input validation for OpenMeteo.
 
 ### v5.2.2 - Seasonal Scenery / Ambient Sound Split
 
@@ -477,6 +500,7 @@ See [LICENSE](LICENSE) for details.
 - Harmony patch library
 - Duvet
 - Seniverse API service
+- OpenMeteo API service
 - Google Gemini 3 Pro
 - GitHub Copilot
 - Claude Sonnet and Opus 4.5
