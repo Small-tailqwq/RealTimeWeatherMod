@@ -24,5 +24,6 @@
     <Compile Include="..\RealTimeWeatherMod\Core\StartupWeatherSyncPolicy.cs" Link="Core\StartupWeatherSyncPolicy.cs" />
     <Compile Include="..\RealTimeWeatherMod\Core\WeatherUiState.cs" Link="Core\WeatherUiState.cs" />
     <Compile Include="..\RealTimeWeatherMod\Models\WeatherData.cs" Link="Models\WeatherData.cs" />
+    <Compile Include="..\RealTimeWeatherMod\Services\OpenMeteoWeatherMapper.cs" Link="Services\OpenMeteoWeatherMapper.cs" />
   </ItemGroup>
 </Project>

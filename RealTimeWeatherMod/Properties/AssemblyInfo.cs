@@ -22,6 +22,11 @@ using System.Runtime.InteropServices;
 // 如果此项目向 COM 公开，则下列 GUID 用于类型库的 ID
 [assembly: Guid("426b3167-5474-4b37-941d-a32b8cf29351")]
 
+// 允许测试项目访问 internal 类型
+#if DEBUG
+[assembly: InternalsVisibleTo("RealTimeWeatherMod.Tests")]
+#endif
+
 // 程序集的版本信息由下列四个值组成: 
 //
 //      主版本

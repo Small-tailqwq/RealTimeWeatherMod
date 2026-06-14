@@ -4,6 +4,19 @@ namespace ChillWithYou.EnvSync.Models
 {
     public enum WeatherCondition { Clear, Cloudy, Rainy, Snowy, Foggy, Unknown }
 
+    public static class WeatherConditionMapper
+    {
+        public static WeatherCondition FromSeniverseCode(int code)
+        {
+            if (code >= 0 && code <= 3) return WeatherCondition.Clear;
+            if (code >= 4 && code <= 9) return WeatherCondition.Cloudy;
+            if (code >= 10 && code <= 20) return WeatherCondition.Rainy;
+            if (code >= 21 && code <= 25) return WeatherCondition.Snowy;
+            if (code >= 26 && code <= 36) return WeatherCondition.Foggy;
+            return WeatherCondition.Unknown;
+        }
+    }
+
     public class WeatherInfo
     {
         public WeatherCondition Condition;

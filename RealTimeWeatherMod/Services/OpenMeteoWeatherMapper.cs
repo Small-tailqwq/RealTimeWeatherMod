@@ -108,7 +108,7 @@ namespace ChillWithYou.EnvSync.Services
 
         private static WeatherCondition ToCondition(int normalizedCode)
         {
-            return WeatherService.MapCodeToCondition(normalizedCode);
+            return WeatherConditionMapper.FromSeniverseCode(normalizedCode);
         }
 
         private static string ToWeatherText(int weatherCode, int normalizedCode)

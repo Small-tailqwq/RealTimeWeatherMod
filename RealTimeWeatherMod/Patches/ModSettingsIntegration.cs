@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Reflection;
 using UnityEngine;
 using BepInEx; // 依赖 BepInEx 环境
 
@@ -30,6 +31,7 @@ namespace ChillWithYou.EnvSync.Patches
 
         // 城市位置修改防抖相关
         private Coroutine _locationDebounceCoroutine;
+        private Coroutine _latLonDebounceCoroutine;
 
         private void Start()
         {
@@ -116,7 +118,12 @@ namespace ChillWithYou.EnvSync.Patches
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_DETAIL", "Detailed Segments", "詳細セグメント", "详细时段" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_EGG", "Seasonal Scenery", "季節の景色", "季节性景色" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_AMBIENT", "Ambient Sounds", "環境音", "环境音效" });
-                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_CITY", "City", "都市", "城市" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_CITY", "City (Seniverse)", "都市（Seniverse）", "城市 (心知天气)" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_PROVIDER", "Weather Provider", "天気提供元", "天气数据源" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_PROVIDER_SENIVERSE", "Seniverse", "Seniverse", "心知天气" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_PROVIDER_OPENMETEO", "OpenMeteo", "OpenMeteo", "OpenMeteo" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_LAT", "Latitude (OpenMeteo)", "緯度（OpenMeteo）", "纬度 (OpenMeteo)" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_LON", "Longitude (OpenMeteo)", "経度（OpenMeteo）", "经度 (OpenMeteo)" });
                 }
 
                 // =========================================================
@@ -202,8 +209,46 @@ namespace ChillWithYou.EnvSync.Patches
                         ChillEnvPlugin.Instance.Config.Save();
                     });
 
-                // --- 输入框示例：城市位置 ---
-                string labelCity = hasTranslation ? "ENV_SYNC_CITY" : "城市";
+                // --- 下拉/输入框：天气服务提供商 ---
+                string labelProvider = hasTranslation ? "ENV_SYNC_PROVIDER" : "天气数据源";
+                var providerValues = new string[] { "Seniverse", "OpenMeteo" };
+                var providerOptions = hasTranslation
+                    ? new string[] { "ENV_SYNC_PROVIDER_SENIVERSE", "ENV_SYNC_PROVIDER_OPENMETEO" }
+                    : providerValues;
+                string currentProvider = ChillEnvPlugin.Cfg_WeatherProvider.Value;
+                if (string.IsNullOrWhiteSpace(currentProvider) ||
+                    System.Array.IndexOf(providerValues, currentProvider) < 0)
+                {
+                    currentProvider = "Seniverse";
+                }
+
+                Action<string> onProviderChanged = (val) =>
+                {
+                    ChillEnvPlugin.Cfg_WeatherProvider.Value = val;
+                    ChillEnvPlugin.Instance.Config.Save();
+                    Services.WeatherService.InvalidateCache();
+                    ChillEnvPlugin.Log?.LogInfo($"[设置] 天气数据源已设置为: {val}");
+                    Core.AutoEnvRunner.TriggerWeatherRefresh();
+                };
+
+                AddDropdownSafe(managerInstance, managerType,
+                    labelProvider,
+                    currentProvider,
+                    providerOptions,
+                    providerValues,
+                    onProviderChanged);
+
+                object visibleForOpenMeteo = CreateDropdownOptionVisibleWhen(
+                    managerType,
+                    labelProvider,
+                    providerOptions[1]);
+                object visibleForSeniverse = CreateDropdownOptionVisibleWhen(
+                    managerType,
+                    labelProvider,
+                    providerOptions[0]);
+
+                // --- 输入框：心知天气 - 城市位置 ---
+                string labelCity = hasTranslation ? "ENV_SYNC_CITY" : "城市 (心知天气)";
                 if (!AddInputFieldSafe(managerInstance, managerType,
                     labelCity,
                     ChillEnvPlugin.Cfg_Location.Value,
@@ -216,8 +261,32 @@ namespace ChillWithYou.EnvSync.Patches
                         {
                             StopCoroutine(_locationDebounceCoroutine);
                         }
-                        _locationDebounceCoroutine = StartCoroutine(RefreshWeatherAfterDelay(val, 3f));
-                    }))
+                        _locationDebounceCoroutine = StartCoroutine(
+                            RefreshWeatherAfterDelay($"心知天气城市 '{val}'", 3f, false));
+                    },
+                    visibleForSeniverse))
+                {
+                    allSuccess = false;
+                }
+
+                // --- 输入框：OpenMeteo - 纬度 ---
+                string labelLat = hasTranslation ? "ENV_SYNC_LAT" : "纬度 (OpenMeteo)";
+                if (!AddInputFieldSafe(managerInstance, managerType,
+                    labelLat,
+                    ChillEnvPlugin.Cfg_OpenMeteoLatitude.Value.ToString("F4"),
+                    (val) => TryParseAndSetCoordinate(val, isLatitude: true),
+                    visibleForOpenMeteo))
+                {
+                    allSuccess = false;
+                }
+
+                // --- 输入框：OpenMeteo - 经度 ---
+                string labelLon = hasTranslation ? "ENV_SYNC_LON" : "经度 (OpenMeteo)";
+                if (!AddInputFieldSafe(managerInstance, managerType,
+                    labelLon,
+                    ChillEnvPlugin.Cfg_OpenMeteoLongitude.Value.ToString("F4"),
+                    (val) => TryParseAndSetCoordinate(val, isLatitude: false),
+                    visibleForOpenMeteo))
                 {
                     allSuccess = false;
                 }
@@ -294,15 +363,11 @@ namespace ChillWithYou.EnvSync.Patches
         /// <param name="callback">结束编辑后的回调</param>
         /// <returns>是否添加成功</returns>
         private bool AddInputFieldSafe(object managerInstance, Type managerType,
-            string label, string initialValue, Action<string> callback)
+            string label, string initialValue, Action<string> callback, object visibleWhen = null)
         {
             try
             {
-                // 查找目标方法：AddInputField(string, string, Action<string>)
-                var method = managerType.GetMethod("AddInputField", new Type[]
-                {
-                    typeof(string), typeof(string), typeof(Action<string>)
-                });
+                var method = FindInputFieldMethod(managerType, visibleWhen);
 
                 if (method == null) return false;
 
@@ -312,12 +377,132 @@ namespace ChillWithYou.EnvSync.Patches
                     catch (Exception ex) { Debug.LogError($"[EnvSync] Input callback error ({label}): {ex}"); }
                 };
 
-                method.Invoke(managerInstance, new object[] { label, initialValue, safeCallback });
+                object[] args = method.GetParameters().Length == 4
+                    ? new object[] { label, initialValue, safeCallback, visibleWhen }
+                    : new object[] { label, initialValue, safeCallback };
+
+                method.Invoke(managerInstance, args);
                 return true;
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[EnvSync] Failed to add input field '{label}': {ex.Message}");
+                return false;
+            }
+        }
+
+        private MethodInfo FindInputFieldMethod(Type managerType, object visibleWhen)
+        {
+            if (visibleWhen != null)
+            {
+                var methods = managerType.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var candidate in methods)
+                {
+                    if (candidate.Name != "AddInputField")
+                    {
+                        continue;
+                    }
+
+                    var parameters = candidate.GetParameters();
+                    if (parameters.Length != 4 ||
+                        parameters[0].ParameterType != typeof(string) ||
+                        parameters[1].ParameterType != typeof(string) ||
+                        parameters[2].ParameterType != typeof(Action<string>) ||
+                        !parameters[3].ParameterType.IsInstanceOfType(visibleWhen))
+                    {
+                        continue;
+                    }
+
+                    return candidate;
+                }
+            }
+
+            // 旧版 iGPU Savior 没有条件可见性参数时，退回到无条件显示。
+            return managerType.GetMethod("AddInputField", new Type[]
+            {
+                typeof(string), typeof(string), typeof(Action<string>)
+            });
+        }
+
+        private object CreateDropdownOptionVisibleWhen(Type managerType, string targetKey, string expectedOption)
+        {
+            try
+            {
+                Type visibleWhenType = managerType.Assembly.GetType("ModShared.VisibleWhen") ??
+                    Type.GetType("ModShared.VisibleWhen, iGPU Savior");
+                if (visibleWhenType == null)
+                {
+                    return null;
+                }
+
+                var method = visibleWhenType.GetMethod(
+                    "DropdownOption",
+                    BindingFlags.Public | BindingFlags.Static,
+                    null,
+                    new Type[] { typeof(string), typeof(string) },
+                    null);
+                if (method == null)
+                {
+                    return null;
+                }
+
+                return method.Invoke(null, new object[] { targetKey, expectedOption });
+            }
+            catch (Exception ex)
+            {
+                ChillEnvPlugin.Log?.LogWarning($"[EnvSync] 条件可见性不可用，设置项将保持显示: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 安全添加下拉框 (Dropdown) - 封装了反射逻辑；iGPU Savior 签名:
+        /// AddDropdown(string labelOrKey, List&lt;string&gt; options, int defaultIndex, Action&lt;int&gt; onValueChanged)
+        /// </summary>
+        private bool AddDropdownSafe(object managerInstance, Type managerType,
+            string label, string currentValue, string[] options, string[] optionValues, Action<string> callback)
+        {
+            try
+            {
+                var listStringType = typeof(System.Collections.Generic.List<string>);
+
+                // iGPU Savior 实际签名：AddDropdown(string, List<string>, int, Action<int>)
+                var method = managerType.GetMethod("AddDropdown", new Type[] {
+                    typeof(string), listStringType, typeof(int), typeof(Action<int>) });
+
+                if (method == null) return false;
+
+                var optionsList = new System.Collections.Generic.List<string>(options ?? new string[0]);
+                var valuesList = new System.Collections.Generic.List<string>(optionValues ?? options ?? new string[0]);
+                int selectedIndex = 0;
+                if (!string.IsNullOrEmpty(currentValue))
+                {
+                    int found = valuesList.IndexOf(currentValue);
+                    if (found < 0)
+                    {
+                        found = optionsList.IndexOf(currentValue);
+                    }
+                    if (found >= 0) selectedIndex = found;
+                }
+
+                Action<string> safeStringCallback = (val) =>
+                {
+                    try { callback?.Invoke(val); }
+                    catch (Exception ex) { ChillEnvPlugin.Log?.LogError($"❌ 下拉回调错误 ({label}): {ex.Message}"); }
+                };
+
+                var intCallback = new Action<int>((idx) =>
+                {
+                    if (idx >= 0 && idx < valuesList.Count)
+                        safeStringCallback(valuesList[idx]);
+                });
+
+                method.Invoke(managerInstance, new object[] { label, optionsList, selectedIndex, intCallback });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ChillEnvPlugin.Log?.LogWarning($"[EnvSync] 添加下拉框失败 '{label}': {ex.Message}");
                 return false;
             }
         }
@@ -329,12 +514,12 @@ namespace ChillWithYou.EnvSync.Patches
         /// <summary>
         /// 延迟刷新天气 - 防抖机制
         /// </summary>
-        private IEnumerator RefreshWeatherAfterDelay(string location, float delay)
+        private IEnumerator RefreshWeatherAfterDelay(string targetDescription, float delay, bool isCoordinateRefresh)
         {
             // 用真实时间的延迟,避免 Time.timeScale 影响导致等待过长
             yield return new WaitForSecondsRealtime(delay);
             
-            ChillEnvPlugin.Log?.LogInfo($"[EnvSync] 城市已更新为 '{location}',正在刷新天气与日出日落数据...");
+            ChillEnvPlugin.Log?.LogInfo($"[EnvSync] {targetDescription} 已更新，正在刷新天气与日出日落数据...");
             
             // 立即触发天气刷新 (配置值已在回调中更新,无需 Reload)
             Core.AutoEnvRunner.TriggerWeatherRefresh();
@@ -342,7 +527,62 @@ namespace ChillWithYou.EnvSync.Patches
             // 同时刷新日出日落数据 (地理位置变化会影响日出日落时间)
             Core.AutoEnvRunner.TriggerSunScheduleRefresh();
             
-            _locationDebounceCoroutine = null;
+            if (isCoordinateRefresh)
+                _latLonDebounceCoroutine = null;
+            else
+                _locationDebounceCoroutine = null;
+        }
+
+        private string GetOpenMeteoCoordinateDescription()
+        {
+            return string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "OpenMeteo 坐标 {0:0.####}, {1:0.####}",
+                ChillEnvPlugin.Cfg_OpenMeteoLatitude.Value,
+                ChillEnvPlugin.Cfg_OpenMeteoLongitude.Value);
+        }
+
+        /// <summary>
+        /// 解析并保存经纬度输入,失败时记录警告
+        /// </summary>
+        private void TryParseAndSetCoordinate(string val, bool isLatitude)
+        {
+            if (double.TryParse(val,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out double result))
+            {
+                double min = isLatitude ? -90d : -180d;
+                double max = isLatitude ? 90d : 180d;
+                string name = isLatitude ? "纬度" : "经度";
+                if (result < min || result > max)
+                {
+                    ChillEnvPlugin.Log?.LogWarning($"[设置] OpenMeteo {name} 超出有效范围 [{min:F0}, {max:F0}]: {result:F4}");
+                    return;
+                }
+
+                if (isLatitude)
+                    ChillEnvPlugin.Cfg_OpenMeteoLatitude.Value = result;
+                else
+                    ChillEnvPlugin.Cfg_OpenMeteoLongitude.Value = result;
+
+                ChillEnvPlugin.Instance.Config.Save();
+                Services.WeatherService.InvalidateCache();
+
+                ChillEnvPlugin.Log?.LogInfo($"[设置] OpenMeteo {name} 已设置为: {result:F4}");
+
+                if (_latLonDebounceCoroutine != null)
+                {
+                    StopCoroutine(_latLonDebounceCoroutine);
+                }
+                _latLonDebounceCoroutine = StartCoroutine(
+                    RefreshWeatherAfterDelay(GetOpenMeteoCoordinateDescription(), 3f, true));
+            }
+            else
+            {
+                string name = isLatitude ? "纬度" : "经度";
+                ChillEnvPlugin.Log?.LogWarning($"[设置] 无法解析 OpenMeteo {name} 输入: {val}");
+            }
         }
 
         #endregion

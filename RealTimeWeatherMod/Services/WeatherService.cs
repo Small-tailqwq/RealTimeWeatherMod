@@ -10,6 +10,7 @@ namespace ChillWithYou.EnvSync.Services
     public class WeatherService
     {
         private const string ProviderOpenMeteo = "OpenMeteo";
+        private const string ProviderSeniverseDisplayName = "心知天气";
 
         private static WeatherInfo _cachedWeather;
         private static DateTime _lastFetchTime;
@@ -29,14 +30,32 @@ namespace ChillWithYou.EnvSync.Services
             return string.Equals(provider?.Trim(), ProviderOpenMeteo, StringComparison.OrdinalIgnoreCase);
         }
 
+        public static string GetCurrentProviderTargetDescription(string seniverseLocation)
+        {
+            if (IsOpenMeteoProvider(ChillEnvPlugin.Cfg_WeatherProvider?.Value))
+            {
+                double latitude = ChillEnvPlugin.Cfg_OpenMeteoLatitude?.Value ?? 39.9042d;
+                double longitude = ChillEnvPlugin.Cfg_OpenMeteoLongitude?.Value ?? 116.4074d;
+                return $"{ProviderOpenMeteo} 坐标 {FormatCoordinates(latitude, longitude)}";
+            }
+
+            return $"{ProviderSeniverseDisplayName} 城市 {NormalizeLocation(seniverseLocation)}";
+        }
+
         private static int GetCacheExpiryMinutes()
         {
-            return ChillEnvPlugin.Cfg_CacheExpiryMinutes != null ? ChillEnvPlugin.Cfg_CacheExpiryMinutes.Value : 60;
+            int minutes = ChillEnvPlugin.Cfg_CacheExpiryMinutes?.Value ?? 60;
+            return Math.Max(1, minutes);
         }
 
         private static string NormalizeLocation(string location)
         {
             return location?.Trim() ?? string.Empty;
+        }
+
+        private static string FormatCoordinates(double latitude, double longitude)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "{0:0.####}, {1:0.####}", latitude, longitude);
         }
 
         private static string GetCacheKey(string location)
@@ -124,13 +143,13 @@ namespace ChillWithYou.EnvSync.Services
 
             if (string.IsNullOrEmpty(finalKey))
             {
-                ChillEnvPlugin.Log?.LogWarning("[API] 未配置 API Key 且无内置 Key");
+                ChillEnvPlugin.Log?.LogWarning("[心知天气] 未配置 API Key 且无内置 Key");
                 onComplete?.Invoke(fallback);
                 yield break;
             }
 
             string url = $"https://api.seniverse.com/v3/weather/now.json?key={finalKey}&location={UnityWebRequest.EscapeURL(location)}&language=zh-Hans&unit=c";
-            ChillEnvPlugin.Log?.LogInfo($"[API] 发起请求: {location}");
+            ChillEnvPlugin.Log?.LogInfo($"[心知天气] 发起天气请求: {NormalizeLocation(location)}");
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
@@ -139,7 +158,7 @@ namespace ChillWithYou.EnvSync.Services
 
                 if (request.result != UnityWebRequest.Result.Success || string.IsNullOrEmpty(request.downloadHandler.text))
                 {
-                    ChillEnvPlugin.Log?.LogWarning($"[API] 请求失败: {request.error}");
+                    ChillEnvPlugin.Log?.LogWarning($"[心知天气] 天气请求失败: {request.error}");
                     onComplete?.Invoke(fallback);
                     yield break;
                 }
@@ -150,16 +169,20 @@ namespace ChillWithYou.EnvSync.Services
                     if (weather != null)
                     {
                         StoreCache(cacheKey, weather);
-                        ChillEnvPlugin.Log?.LogInfo($"[API] 数据更新: {weather}");
+                        ChillEnvPlugin.Log?.LogInfo($"[心知天气] 天气数据更新: {weather}");
                         onComplete?.Invoke(weather);
                     }
                     else
                     {
-                        ChillEnvPlugin.Log?.LogWarning("[API] 解析失败");
+                        ChillEnvPlugin.Log?.LogWarning("[心知天气] 天气解析失败");
                         onComplete?.Invoke(fallback);
                     }
                 }
-                catch { onComplete?.Invoke(fallback); }
+                catch (Exception ex)
+                {
+                    ChillEnvPlugin.Log?.LogError($"[心知天气] 天气解析异常: {ex}");
+                    onComplete?.Invoke(fallback);
+                }
             }
         }
 
@@ -173,7 +196,7 @@ namespace ChillWithYou.EnvSync.Services
                 latitude,
                 longitude);
 
-            ChillEnvPlugin.Log?.LogInfo($"[OpenMeteo] 发起请求: {latitude}, {longitude}");
+            ChillEnvPlugin.Log?.LogInfo($"[OpenMeteo] 发起天气请求: {FormatCoordinates(latitude, longitude)}");
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
@@ -193,7 +216,7 @@ namespace ChillWithYou.EnvSync.Services
                     if (weather != null)
                     {
                         StoreCache(cacheKey, weather);
-                        ChillEnvPlugin.Log?.LogInfo($"[OpenMeteo] 数据更新: {weather}");
+                        ChillEnvPlugin.Log?.LogInfo($"[OpenMeteo] 天气数据更新: {weather}");
                         onComplete?.Invoke(weather);
                     }
                     else
@@ -202,7 +225,11 @@ namespace ChillWithYou.EnvSync.Services
                         onComplete?.Invoke(fallback);
                     }
                 }
-                catch { onComplete?.Invoke(fallback); }
+                catch (Exception ex)
+                {
+                    ChillEnvPlugin.Log?.LogError($"[OpenMeteo] 解析异常: {ex}");
+                    onComplete?.Invoke(fallback);
+                }
             }
         }
 
@@ -296,7 +323,7 @@ namespace ChillWithYou.EnvSync.Services
             }
 
             string url = $"https://api.seniverse.com/v3/geo/sun.json?key={finalKey}&location={UnityWebRequest.EscapeURL(location)}&language=zh-Hans&start=0&days=1";
-            ChillEnvPlugin.Log?.LogInfo($"[API] 请求日出日落: {location}");
+            ChillEnvPlugin.Log?.LogInfo($"[心知天气] 发起日出日落请求: {NormalizeLocation(location)}");
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
@@ -305,7 +332,7 @@ namespace ChillWithYou.EnvSync.Services
 
                 if (request.result != UnityWebRequest.Result.Success || string.IsNullOrEmpty(request.downloadHandler.text))
                 {
-                    ChillEnvPlugin.Log?.LogWarning($"[API] 日出日落请求失败: {request.error}");
+                    ChillEnvPlugin.Log?.LogWarning($"[心知天气] 日出日落请求失败: {request.error}");
                     onComplete?.Invoke(null);
                     yield break;
                 }
@@ -317,7 +344,7 @@ namespace ChillWithYou.EnvSync.Services
                 }
                 catch (Exception ex)
                 {
-                    ChillEnvPlugin.Log?.LogError($"[API] 日出日落解析失败: {ex}");
+                    ChillEnvPlugin.Log?.LogError($"[心知天气] 日出日落解析失败: {ex}");
                     onComplete?.Invoke(null);
                 }
             }
@@ -333,7 +360,7 @@ namespace ChillWithYou.EnvSync.Services
                 latitude,
                 longitude);
 
-            ChillEnvPlugin.Log?.LogInfo($"[OpenMeteo] 请求日出日落: {latitude}, {longitude}");
+            ChillEnvPlugin.Log?.LogInfo($"[OpenMeteo] 发起日出日落请求: {FormatCoordinates(latitude, longitude)}");
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
@@ -410,12 +437,27 @@ namespace ChillWithYou.EnvSync.Services
 
         private static double ExtractDoubleValue(string json, string propertyName)
         {
-            int start = json.IndexOf(propertyName, StringComparison.Ordinal);
-            if (start < 0) return 0d;
+            string quotedKey = propertyName.StartsWith("\"") && propertyName.EndsWith("\"")
+                ? propertyName
+                : "\"" + propertyName + "\"";
 
-            int colon = json.IndexOf(':', start + propertyName.Length);
-            if (colon < 0) return 0d;
-            start = colon + 1;
+            int searchStart = 0;
+            int start;
+            while (true)
+            {
+                start = json.IndexOf(quotedKey, searchStart, StringComparison.Ordinal);
+                if (start < 0) return 0d;
+
+                int colon = start + quotedKey.Length;
+                while (colon < json.Length && char.IsWhiteSpace(json[colon])) colon++;
+                if (colon < json.Length && json[colon] == ':')
+                {
+                    start = colon + 1;
+                    break;
+                }
+
+                searchStart = start + 1;
+            }
 
             while (start < json.Length && char.IsWhiteSpace(json[start]))
             {
@@ -423,7 +465,7 @@ namespace ChillWithYou.EnvSync.Services
             }
 
             int end = start;
-            while (end < json.Length && "-+0123456789.".IndexOf(json[end]) >= 0)
+            while (end < json.Length && "-+0123456789.eE".IndexOf(json[end]) >= 0)
             {
                 end++;
             }
@@ -432,7 +474,7 @@ namespace ChillWithYou.EnvSync.Services
 
             string val = json.Substring(start, end - start);
             double res;
-            return double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out res) ? res : 0d;
+            return double.TryParse(val, NumberStyles.Float | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out res) ? res : 0d;
         }
 
         private static string ExtractStringValue(string json, string prefix, string suffix)
@@ -516,12 +558,7 @@ namespace ChillWithYou.EnvSync.Services
 
         public static WeatherCondition MapCodeToCondition(int code)
         {
-            if (code >= 0 && code <= 3) return WeatherCondition.Clear;
-            if (code >= 4 && code <= 9) return WeatherCondition.Cloudy;
-            if (code >= 10 && code <= 20) return WeatherCondition.Rainy;
-            if (code >= 21 && code <= 25) return WeatherCondition.Snowy;
-            if (code >= 26 && code <= 36) return WeatherCondition.Foggy;
-            return WeatherCondition.Unknown;
+            return WeatherConditionMapper.FromSeniverseCode(code);
         }
     }
 }

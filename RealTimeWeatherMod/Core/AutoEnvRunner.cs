@@ -16,6 +16,7 @@ namespace ChillWithYou.EnvSync.Core
         private bool _isFetching;
         private bool _pendingForceRefresh;
         private float _nextSunSyncAttemptTime;
+        private bool _sunSyncInProgress;
 
         private static AutoEnvRunner _instance;
 
@@ -97,39 +98,63 @@ namespace ChillWithYou.EnvSync.Core
             string lastSync = ChillEnvPlugin.Cfg_LastSunSyncDate.Value;
             string today = DateTime.Now.ToString("yyyy-MM-dd");
 
-            if (lastSync == today || Time.time < _nextSunSyncAttemptTime)
+            if (_sunSyncInProgress || lastSync == today || Time.time < _nextSunSyncAttemptTime)
             {
                 return;
             }
 
-            _nextSunSyncAttemptTime = Time.time + GetConfiguredWeatherRefreshSeconds();
             StartCoroutine(SyncSunScheduleRoutine(today));
         }
 
         private System.Collections.IEnumerator SyncSunScheduleRoutine(string targetDate)
         {
-            bool success = false;
-            string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
-            string location = ChillEnvPlugin.Cfg_Location.Value;
-
-            yield return WeatherService.FetchSunSchedule(apiKey, location, (data) =>
+            _sunSyncInProgress = true;
+            try
             {
-                if (data != null)
+                bool success = false;
+                string apiKey = ChillEnvPlugin.Cfg_SeniverseKey.Value;
+                string location = ChillEnvPlugin.Cfg_Location.Value;
+
+                const int MaxShortRetries = 5;
+                float delay = 5f;
+
+                for (int attempt = 0; attempt < MaxShortRetries; attempt++)
                 {
-                    ChillEnvPlugin.Log?.LogInfo($"[SunSync] 同步成功: 日出{data.sunrise} 日落{data.sunset}");
+                    yield return WeatherService.FetchSunSchedule(apiKey, location, (data) =>
+                    {
+                        if (data != null)
+                        {
+                            ChillEnvPlugin.Log?.LogInfo($"[SunSync] 同步成功: 日出{data.sunrise} 日落{data.sunset}");
 
-                    ChillEnvPlugin.Cfg_SunriseTime.Value = data.sunrise;
-                    ChillEnvPlugin.Cfg_SunsetTime.Value = data.sunset;
-                    ChillEnvPlugin.Cfg_LastSunSyncDate.Value = targetDate;
+                            ChillEnvPlugin.Cfg_SunriseTime.Value = data.sunrise;
+                            ChillEnvPlugin.Cfg_SunsetTime.Value = data.sunset;
+                            ChillEnvPlugin.Cfg_LastSunSyncDate.Value = targetDate;
 
-                    ChillEnvPlugin.Instance.Config.Save();
-                    success = true;
+                            ChillEnvPlugin.Instance.Config.Save();
+                            success = true;
+                        }
+                    });
+
+                    if (success)
+                    {
+                        _nextSunSyncAttemptTime = Time.time + GetConfiguredWeatherRefreshSeconds();
+                        yield break;
+                    }
+
+                    if (attempt < MaxShortRetries - 1)
+                    {
+                        ChillEnvPlugin.Log?.LogWarning($"[SunSync] 同步失败，{delay}秒后重试 ({attempt + 1}/{MaxShortRetries})");
+                        yield return new WaitForSeconds(delay);
+                        delay *= 2f;
+                    }
                 }
-            });
 
-            if (!success)
+                ChillEnvPlugin.Log?.LogError("[SunSync] 短重试耗尽，30分钟后再次尝试");
+                _nextSunSyncAttemptTime = Time.time + 30f * 60f;
+            }
+            finally
             {
-                ChillEnvPlugin.Log?.LogWarning("[SunSync] 同步失败，保留现有日出日落设置");
+                _sunSyncInProgress = false;
             }
         }
 
@@ -204,7 +229,8 @@ namespace ChillWithYou.EnvSync.Core
         {
             if (_instance != null)
             {
-                ChillEnvPlugin.Log?.LogInfo("[外部触发] 请求天气刷新");
+                string target = WeatherService.GetCurrentProviderTargetDescription(ChillEnvPlugin.Cfg_Location.Value);
+                ChillEnvPlugin.Log?.LogInfo($"[外部触发] 请求天气刷新 ({target})");
                 _instance.ForceRefreshWeather();
             }
         }
@@ -228,9 +254,9 @@ namespace ChillWithYou.EnvSync.Core
         {
             if (_instance != null)
             {
-                ChillEnvPlugin.Log?.LogInfo("[外部触发] 请求日出日落刷新");
-                string today = DateTime.Now.ToString("yyyy-MM-dd");
-                _instance.StartCoroutine(_instance.SyncSunScheduleRoutine(today));
+                string target = WeatherService.GetCurrentProviderTargetDescription(ChillEnvPlugin.Cfg_Location.Value);
+                ChillEnvPlugin.Log?.LogInfo($"[外部触发] 请求日出日落刷新 ({target})");
+                _instance.CheckAndSyncSunSchedule();
             }
         }
 

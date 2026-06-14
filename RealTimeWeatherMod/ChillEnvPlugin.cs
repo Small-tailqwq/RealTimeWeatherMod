@@ -107,7 +107,11 @@ namespace ChillWithYou.EnvSync
       Cfg_EnableTimeSync = Config.Bind("TimeSync", "EnableTimeSync", true, "是否启用时间同步");
 
       Cfg_EnableWeatherSync = Config.Bind("WeatherAPI", "EnableWeatherSync", false, "是否启用天气API同步");
-      Cfg_WeatherProvider = Config.Bind("WeatherAPI", "WeatherProvider", "OpenMeteo", "天气数据源: Seniverse 或 OpenMeteo");
+      Cfg_WeatherProvider = Config.Bind(
+        "WeatherAPI",
+        "WeatherProvider",
+        "OpenMeteo",
+        new ConfigDescription("天气数据源", new AcceptableValueList<string>("Seniverse", "OpenMeteo")));
       Cfg_SeniverseKey = Config.Bind("WeatherAPI", "SeniverseKey", "", "心知天气 API Key");
       Cfg_Location = Config.Bind("WeatherAPI", "Location", "beijing", "城市名称");
       Cfg_OpenMeteoLatitude = Config.Bind("WeatherAPI", "Latitude", 39.9042, "Open-Meteo 纬度");
