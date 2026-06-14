@@ -4,7 +4,7 @@
 [![.NET Framework 4.7.2](https://img.shields.io/badge/.NET%20Framework-4.7.2-blue.svg)](https://dotnet.microsoft.com/download/dotnet-framework/net472)
 [![BepInEx](https://img.shields.io/badge/BepInEx-Plugin-green.svg)](https://github.com/BepInEx/BepInEx)
 <a href="https://github.com/anomalyco/opencode"><img src="https://github.com/anomalyco/opencode/raw/dev/packages/console/app/src/asset/logo-ornate-dark.svg" height="20" alt="opencode"></a>
-<a href="https://opencode.ai/go?ref=X83D5WQ2NS"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='54' height='30' viewBox='0 0 54 30'%3E%3Cpath d='M24 30H0V0H24V6H6V24H18V18H12V12H24V30Z' fill='currentColor'/%3E%3Cpath d='M12 18H18V24H6V12H12V18Z' fill='currentColor' fill-opacity='0.2'/%3E%3Cpath d='M48 12V24H36V12H48Z' fill='currentColor' fill-opacity='0.2'/%3E%3Cpath d='M54 30H30V0H54V30ZM36 24H48V6H36V24Z' fill='currentColor'/%3E%3C/svg%3E" height="20" alt="OpenCode Go"></a>
+[![opencode](https://img.shields.io/badge/opencode-go-000?style=flat)](https://opencode.ai/go?ref=X83D5WQ2NS)
 > 使用 Opencode 等工具进行构建，由 Opencode GO 提供模型支持
 
 一个用于游戏 《*放松时光：与你共享Lo-Fi故事*》 的实时天气同步 BepInEx 插件，可以根据真实世界的天气情况自动调整游戏内的环境效果，或基于现实时间模拟昼夜循环。
