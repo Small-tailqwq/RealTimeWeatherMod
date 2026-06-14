@@ -26,10 +26,14 @@ namespace ChillWithYou.EnvSync
 
     // --- 配置项 ---
     internal static ConfigEntry<int> Cfg_WeatherRefreshMinutes;
+    internal static ConfigEntry<int> Cfg_CacheExpiryMinutes;
     internal static ConfigEntry<string> Cfg_SunriseTime;
     internal static ConfigEntry<string> Cfg_SunsetTime;
+    internal static ConfigEntry<string> Cfg_WeatherProvider;
     internal static ConfigEntry<string> Cfg_SeniverseKey;
     internal static ConfigEntry<string> Cfg_Location;
+    internal static ConfigEntry<double> Cfg_OpenMeteoLatitude;
+    internal static ConfigEntry<double> Cfg_OpenMeteoLongitude;
     internal static ConfigEntry<bool> Cfg_EnableTimeSync;
     internal static ConfigEntry<bool> Cfg_EnableWeatherSync;
     internal static ConfigEntry<bool> Cfg_UnlockEnvironments;
@@ -97,13 +101,17 @@ namespace ChillWithYou.EnvSync
     private void InitConfig()
     {
       Cfg_WeatherRefreshMinutes = Config.Bind("WeatherSync", "RefreshMinutes", 30, "天气API刷新间隔(分钟)");
+      Cfg_CacheExpiryMinutes = Config.Bind("WeatherSync", "CacheExpiryMinutes", 60, "天气缓存有效期(分钟)");
       Cfg_SunriseTime = Config.Bind("TimeConfig", "Sunrise", "06:30", "日出时间");
       Cfg_SunsetTime = Config.Bind("TimeConfig", "Sunset", "18:30", "日落时间");
       Cfg_EnableTimeSync = Config.Bind("TimeSync", "EnableTimeSync", true, "是否启用时间同步");
 
       Cfg_EnableWeatherSync = Config.Bind("WeatherAPI", "EnableWeatherSync", false, "是否启用天气API同步");
+      Cfg_WeatherProvider = Config.Bind("WeatherAPI", "WeatherProvider", "OpenMeteo", "天气数据源: Seniverse 或 OpenMeteo");
       Cfg_SeniverseKey = Config.Bind("WeatherAPI", "SeniverseKey", "", "心知天气 API Key");
       Cfg_Location = Config.Bind("WeatherAPI", "Location", "beijing", "城市名称");
+      Cfg_OpenMeteoLatitude = Config.Bind("WeatherAPI", "Latitude", 39.9042, "Open-Meteo 纬度");
+      Cfg_OpenMeteoLongitude = Config.Bind("WeatherAPI", "Longitude", 116.4074, "Open-Meteo 经度");
 
       Cfg_UnlockEnvironments = Config.Bind("Unlock", "UnlockAllEnvironments", true, "自动解锁环境");
       Cfg_UnlockDecorations = Config.Bind("Unlock", "UnlockAllDecorations", true, "自动解锁装饰道具");
