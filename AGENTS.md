@@ -27,7 +27,7 @@ dotnet test RealTimeWeatherMod.Tests/RealTimeWeatherMod.Tests.csproj
 - `ChillEnvPlugin.Awake()`  插件入口：Harmony PatchAll → InitConfig → 创建隐藏 GO (`ChillEnvSyncRunner`) 挂载 3 个 MonoBehaviour
 - Harmony 自动扫描补丁 + 手动 `UnlockConditionGodMode.ApplyPatches()`
 - 三种 MonoBehaviour：`AutoEnvRunner`（天气轮询+环境切换）、`SceneryAutomationSystem`（彩蛋规则）、`ModSettingsIntegration`（设置面板集成）
-- 版本号集中管理：`ChillEnvPlugin.PluginVersion`（当前 `5.2.2`）
+- 版本号集中管理：`ChillEnvPlugin.PluginVersion`（当前 `5.2.3`）
 - API：心知天气 Seniverse（非 OpenWeather），`SeniverseKey` 留空使用内置 Key
 
 ## 反射桥接的游戏类型
@@ -65,6 +65,20 @@ dotnet test RealTimeWeatherMod.Tests/RealTimeWeatherMod.Tests.csproj
 ## UnityExplorer MCP Bridge
 
 子项目 `UnityExplorerMcp/`，硬依赖 UnityExplorer。MCP 配置见 `.mcp.json`（localhost:8972）。
+
+## 发布新版本
+
+> ⚠️ 发布新版本前必须向用户确认新版本号，确认后方可继续。
+
+发布新版时需更新以下所有位置的版本号：
+
+| 位置 | 文件 | 说明 |
+|------|------|------|
+| 主版本源 | `ChillEnvPlugin.cs` → `PluginVersion` | BepInEx 插件版本，游戏内显示用 |
+| 程序集版本 | `Properties\AssemblyInfo.cs` | `AssemblyVersion` + `AssemblyFileVersion`，Windows 文件属性 |
+| Thunderstore | `thunderstore/manifest.json` → `version_number` | Thunderstore 发布版本 |
+| 更新日志 | `CHANGELOG.md` | 新增版本标题与变更内容 |
+| 本文档 | `AGENTS.md` → 版本号集中管理行 | 保持文档同步 |
 
 关键 caveat：
 - Mono.CSharp 被 ILMerge 进 UnityExplorer.BIE5.Mono.dll，需 `Reflection.Emit` 创建 `InteractiveBase` 的 public 派生类以绕过 CS0060
