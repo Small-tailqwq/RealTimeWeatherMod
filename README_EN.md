@@ -96,7 +96,9 @@ When seasonal easter eggs are enabled, some scenery effects may be activated ran
 
 ### Sound Effects
 
-When the separate EnableAmbientSounds switch is enabled (off by default), ambient sound effects are managed according to their conditions.
+`Automation.EnableAmbientSounds` (off by default) automates cooking, air conditioner and cicada sounds according to their conditions. Disabling it retains the existing ownership and cleanup rules; it is not a global mute.
+
+`Automation.EnablePrecipitationSounds` separately controls rain audio. It defaults to `true`, preserving rain audio for existing configs without this key. Set it to `false` to keep synchronized light, heavy and thunderstorm rain visuals while muting their sounds, without affecting character voices, action sounds, other ambient audio or snow. With weather sync enabled, the settings-panel toggle updates current rain audio immediately without refreshing weather; cutscene and whale overrides still take priority. After editing the config file, press F7 to reload and sync. Both switches are independent. Manual rain controls retain the game's behavior.
 
 ### TODO
 
@@ -147,8 +149,10 @@ After first run, config is generated at `BepInEx/config/chillwithyou.envsync.cfg
 [Automation]
 ## Enable automatic seasonal scenery easter eggs
 EnableSeasonalEasterEggs = true
-## Enable automatic ambient sound management
+## Automate cooking, air conditioner and cicada sounds (does not control rain audio)
 EnableAmbientSounds = false
+## Play precipitation sounds during weather sync; false keeps rain visuals and mutes rain audio; panel changes update current rain audio immediately
+EnablePrecipitationSounds = true
 ## Follow active in-game rain; block opening and request closing after 30–90s in light rain, 3–8s in rain, or 1–4s in thunderstorms, allowing existing actions to finish
 CloseWindowWhenRaining = true
 

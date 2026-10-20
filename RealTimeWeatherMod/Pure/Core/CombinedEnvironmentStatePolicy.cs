@@ -7,14 +7,12 @@ namespace ChillWithYou.EnvSync.Core
             bool hasSound,
             bool soundActive,
             bool liveSoundActive,
-            bool targetState)
+            bool targetState,
+            bool? targetSoundState = null)
         {
-            if (targetState)
-            {
-                return windowActive && (!hasSound || soundActive);
-            }
-
-            return !windowActive && (!hasSound || (!soundActive && !liveSoundActive));
+            // Omitted sound targets retain the original coupled view/sound behavior.
+            return !NeedsWindowChange(windowActive, targetState) &&
+                !NeedsSoundChange(hasSound, soundActive, liveSoundActive, targetSoundState ?? targetState);
         }
 
         internal static bool NeedsWindowChange(bool windowActive, bool targetState)

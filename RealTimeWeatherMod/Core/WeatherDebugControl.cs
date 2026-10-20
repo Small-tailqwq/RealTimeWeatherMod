@@ -101,7 +101,8 @@ namespace ChillWithYou.EnvSync.Core
                     runtime.TryApplyBaseImmediately(_previewBase.Value, EnvironmentApplyMode.Interactive);
                 if (!ChillEnvPlugin.Cfg_EnableWeatherSync.Value)
                     foreach (var pair in _previewScenery)
-                        runtime.TryApplySceneryState(pair.Key, pair.Value, EnvironmentApplyMode.Interactive);
+                        runtime.TryApplySceneryState(pair.Key, pair.Value, EnvironmentApplyMode.Interactive,
+                            applyPrecipitationSoundSetting: false);
             }
             _previewBase = null;
             _previewScenery.Clear();

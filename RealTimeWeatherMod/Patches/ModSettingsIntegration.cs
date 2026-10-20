@@ -147,7 +147,8 @@ namespace ChillWithYou.EnvSync.Patches
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_UI", "Show Weather on UI", "UIに天気を表示", "日期栏天气" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_DETAIL", "Detailed Segments", "詳細セグメント", "详细时段" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_EGG", "Seasonal Scenery", "季節の景色", "季节性景色" });
-                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_AMBIENT", "Ambient Sounds", "環境音", "环境音效" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_AMBIENT", "Ambient Sound Automation", "環境音の自動管理", "环境音效托管" });
+                    regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_PRECIPITATION_SOUND", "Precipitation Sounds (Weather Sync)", "降水音（天気同期）", "降水声音（天气同步）" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_RAIN_WINDOW", "Close Window in Rain", "雨天に窓を閉める", "下雨自动关窗" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_CITY", "City (Seniverse)", "都市（Seniverse）", "城市 (心知天气)" });
                     regTransMethod.Invoke(managerInstance, new object[] { "ENV_SYNC_PROVIDER", "Weather Provider", "天気提供元", "天气数据源" });
@@ -239,7 +240,7 @@ namespace ChillWithYou.EnvSync.Patches
                         ChillEnvPlugin.Instance.Config.Save();
                     });
 
-                string labelAmbient = hasTranslation ? "ENV_SYNC_AMBIENT" : "环境音效";
+                string labelAmbient = hasTranslation ? "ENV_SYNC_AMBIENT" : "环境音效托管";
                 AddToggleSafe(managerInstance, managerType,
                     labelAmbient,
                     ChillEnvPlugin.Cfg_EnableAmbientSounds.Value,
@@ -247,6 +248,16 @@ namespace ChillWithYou.EnvSync.Patches
                     {
                         ChillEnvPlugin.Cfg_EnableAmbientSounds.Value = value;
                         ChillEnvPlugin.Instance.Config.Save();
+                    });
+
+                AddToggleSafe(managerInstance, managerType,
+                    hasTranslation ? "ENV_SYNC_PRECIPITATION_SOUND" : "降水声音（天气同步）",
+                    ChillEnvPlugin.Cfg_EnablePrecipitationSounds.Value,
+                    (value) =>
+                    {
+                        ChillEnvPlugin.Cfg_EnablePrecipitationSounds.Value = value;
+                        ChillEnvPlugin.Instance.Config.Save();
+                        Core.GameEnvironmentRuntime.Shared.RefreshPrecipitationSounds();
                     });
 
                 AddToggleSafe(managerInstance, managerType,

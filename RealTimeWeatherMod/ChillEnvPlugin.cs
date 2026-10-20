@@ -46,6 +46,7 @@ namespace ChillWithYou.EnvSync
 
     internal static ConfigEntry<bool> Cfg_EnableEasterEggs;
     internal static ConfigEntry<bool> Cfg_EnableAmbientSounds;
+    internal static ConfigEntry<bool> Cfg_EnablePrecipitationSounds;
     internal static ConfigEntry<bool> Cfg_CloseWindowWhenRaining;
 
     // 调试配置
@@ -130,7 +131,8 @@ namespace ChillWithYou.EnvSync
       Cfg_DetailedTimeSegments = Config.Bind("UI", "DetailedTimeSegments", true, "开启12小时制时，显示详细时段(凌晨/清晨/上午等)");
 
       Cfg_EnableEasterEggs = Config.Bind("Automation", "EnableSeasonalEasterEggs", true, "启用季节性景色彩蛋自动托管");
-      Cfg_EnableAmbientSounds = Config.Bind("Automation", "EnableAmbientSounds", false, "启用环境音效自动托管");
+      Cfg_EnableAmbientSounds = Config.Bind("Automation", "EnableAmbientSounds", false, "启用做饭、空调、蝉鸣环境音效自动托管（不控制雨声）");
+      Cfg_EnablePrecipitationSounds = Config.Bind("Automation", "EnablePrecipitationSounds", true, "天气同步时开启小雨、大雨、雷雨声音；关闭时只保留雨景，不影响其他音效；天气同步开启时，设置面板切换立即更新当前雨声");
       Cfg_CloseWindowWhenRaining = Config.Bind(
         "Automation",
         "CloseWindowWhenRaining",
